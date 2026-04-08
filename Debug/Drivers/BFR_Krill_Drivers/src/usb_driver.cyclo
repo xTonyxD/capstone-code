@@ -1,9 +1,0 @@
-../Drivers/BFR_Krill_Drivers/src/usb_driver.c:13:17:USB_Driver_NextIndex	1
-../Drivers/BFR_Krill_Drivers/src/usb_driver.c:18:6:USB_Driver_Init	1
-../Drivers/BFR_Krill_Drivers/src/usb_driver.c:26:6:USB_Driver_SetConfigured	1
-../Drivers/BFR_Krill_Drivers/src/usb_driver.c:31:6:USB_Driver_IsConfigured	1
-../Drivers/BFR_Krill_Drivers/src/usb_driver.c:36:6:USB_Driver_Write	4
-../Drivers/BFR_Krill_Drivers/src/usb_driver.c:51:6:USB_Driver_WriteString	3
-../Drivers/BFR_Krill_Drivers/src/usb_driver.c:68:6:USB_Driver_RxHandler	5
-../Drivers/BFR_Krill_Drivers/src/usb_driver.c:89:10:USB_Driver_Available	2
-../Drivers/BFR_Krill_Drivers/src/usb_driver.c:99:10:USB_Driver_Read	5

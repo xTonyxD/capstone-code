@@ -249,6 +249,12 @@ uint8_t SH1106_IsBusy(void);
  */
 void SH1106_Flush(void);
 
+/**
+ * @brief  Replace the entire framebuffer with external data and push to display via DMA.
+ * @param  data  Pointer to 1024 bytes (128x64 / 8) of raw pixel data
+ */
+void SH1106_SetBufferAndFlush(const uint8_t *data);
+
 
 #ifndef SH1106_I2C_TIMEOUT
 #define SH1106_I2C_TIMEOUT					20000

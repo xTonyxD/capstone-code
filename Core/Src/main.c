@@ -18,21 +18,18 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-#include "adc.h"
-#include "dma.h"
-#include "fdcan.h"
 #include "i2c.h"
 #include "icache.h"
 #include "usart.h"
-#include "usb_device.h"
 #include "gpio.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "sh1106.h"
-#include "usb_driver.h"
+#include "at09_ble.h"
 #include <string.h>
 #include <stdio.h>
+#include <stdbool.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -42,16 +39,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define ADC_VREF            3.3f
-#define ADC_MAX             4096.0f
 
-#define OPAMP_GAIN          0.833f
-#define SENSOR_OFFSET_V     0.5f
-#define SENSOR_SENSITIVITY  0.100f // Change this (based on the datasheet)
-
-#define NUM_SAMPLES         8
-#define CAN_TX_INTERVAL_MS  100
-#define DISPLAY_UPDATE_MS   200
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -62,58 +50,52 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-volatile int time;
-volatile float voltage;
-volatile float current;
-volatile uint16_t AD_RES[NUM_SAMPLES];
-volatile uint8_t adc_ready = 0;
-
-FDCAN_TxHeaderTypeDef TxHeader;
-uint8_t TxData[4];
-uint32_t last_can_tx_time = 0;
-uint32_t last_display_time = 0;
-uint32_t last_usb_tx_time = 0;
-
-typedef struct {
-  uint32_t sensor_ns;
-  uint32_t dma_ns;
-  uint32_t oled_ns;
-} perfstats;
-
-perfstats my_perfstats;
-uint32_t startTime = 0;
 
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
-
+static void DrawFace(bool happy);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-// Return raw ADC voltage (0-3.3)
-float ReadADC(void) {
-  uint32_t sum = 0;
-	for (int i = 0; i < NUM_SAMPLES; i++) {
-		sum += AD_RES[i];
-	}
-	return ((float)sum / NUM_SAMPLES * ADC_VREF) / ADC_MAX;
-}
 
-// Undo gain and calculate current from sensitivity
-void SetCurrent(float adc_voltage) {
-  float sensor_voltage = adc_voltage / OPAMP_GAIN;
-  current = (sensor_voltage - SENSOR_OFFSET_V) / SENSOR_SENSITIVITY;
-}
+static void DrawFace(bool happy) {
+  SH1106_Fill(SH1106_COLOR_BLACK);
 
-void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc) {
-  if (hadc->Instance == ADC1) {
-    adc_ready = 1;
-    my_perfstats.dma_ns = HAL_GetTick() - startTime;
+  // Head outline: circle centred at (64,32) r=28
+  SH1106_DrawCircle(64, 32, 28, SH1106_COLOR_WHITE);
+
+  // Left eye
+  SH1106_DrawFilledCircle(54, 24, 3, SH1106_COLOR_WHITE);
+  // Right eye
+  SH1106_DrawFilledCircle(74, 24, 3, SH1106_COLOR_WHITE);
+
+  if (happy) {
+    // Smile: arc approximated with short line segments
+    for (int i = -10; i < 10; i++) {
+      int x = 64 + i;
+      // parabola opening downward for smile
+      int y = 40 + (i * i) / 12;
+      SH1106_DrawPixel(x, y, SH1106_COLOR_WHITE);
+      SH1106_DrawPixel(x, y + 1, SH1106_COLOR_WHITE);
+    }
+  } else {
+    // Frown: arc approximated with short line segments
+    for (int i = -10; i < 10; i++) {
+      int x = 64 + i;
+      // parabola opening upward for frown
+      int y = 48 - (i * i) / 12;
+      SH1106_DrawPixel(x, y, SH1106_COLOR_WHITE);
+      SH1106_DrawPixel(x, y + 1, SH1106_COLOR_WHITE);
+    }
   }
+
+  SH1106_UpdateScreen();
 }
+
 /* USER CODE END 0 */
 
 /**
@@ -145,74 +127,42 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  MX_DMA_Init();
-  MX_FDCAN1_Init();
   MX_USART2_UART_Init();
-  MX_ADC1_Init();
   MX_I2C1_Init();
   MX_ICACHE_Init();
-  MX_USB_Device_Init();
+  MX_UART4_Init();
   /* USER CODE BEGIN 2 */
-  HAL_ADCEx_Calibration_Start(&hadc1, ADC_SINGLE_ENDED);
-  HAL_ADC_Start_DMA(&hadc1, (uint32_t *)AD_RES, NUM_SAMPLES);
-
-  HAL_FDCAN_Start(&hfdcan1);
-  TxHeader.Identifier = 0x6A; // Probably gotta maybe perhaps change
-  TxHeader.IdType = FDCAN_STANDARD_ID;
-  TxHeader.TxFrameType = FDCAN_DATA_FRAME;
-  TxHeader.DataLength = FDCAN_DLC_BYTES_4;
-  TxHeader.FDFormat = FDCAN_CLASSIC_CAN;
 
   SH1106_Init();
-  SH1106_GotoXY(2, 0);
-  SH1106_Puts("Initializing...", &Font_7x10, 1);
-  SH1106_DrawBitmap(2, 15, bfr_logo, 64, 64, 1);
-  SH1106_UpdateScreenDMA();
-  SH1106_Flush();
-  HAL_Delay(1000);
-  SH1106_Clear();
+  AT09_Init(&huart4);
+
+  // Show smiley by default on boot
+  DrawFace(true);
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-    if (adc_ready) {
-      adc_ready = 0;
-      startTime = HAL_GetTick();
-      voltage = ReadADC();
-      SetCurrent(voltage);
-      uint32_t now = HAL_GetTick();
+    /* ---- Video frame streaming (data type 0x02) ---- */
+    AT09_CheckFrameTimeout();
+    if (at09_frame_ready) {
+      SH1106_SetBufferAndFlush((const uint8_t *)at09_frame_buf);
+      AT09_AckFrame();
+    }
 
-      if ((now - last_display_time) >= DISPLAY_UPDATE_MS) {
-          last_display_time = now;
-          SH1106_Flush();  // ensure previous DMA transfer is done
-          SH1106_Fill(SH1106_COLOR_BLACK);  // clear framebuffer
-          char buffer[22];
-          snprintf(buffer, sizeof(buffer), "Current: %.2f A", current);
-          SH1106_GotoXY(2, 0);
-          SH1106_Puts(buffer, &Font_7x10, 1);
-          SH1106_UpdateScreenDMA();  // non-blocking
+    /* ---- Legacy single-byte commands ---- */
+    if (AT09_DataAvailable()) {
+      uint8_t buf[AT09_RX_BUF_SIZE];
+      uint16_t len = AT09_Read(buf, sizeof(buf));
+      for (uint16_t i = 0; i < len; i++) {
+        if (buf[i] == '1') {
+          DrawFace(true);
+        } else if (buf[i] == '0') {
+          DrawFace(false);
+        }
       }
-
-      if ((now - last_can_tx_time) >= CAN_TX_INTERVAL_MS) {
-        last_can_tx_time = now;
-        float current_snapshot = current;
-        memcpy(TxData, &current_snapshot, sizeof(current_snapshot));
-        HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &TxHeader, TxData);
-      }
-
-      if (USB_Driver_IsConfigured() && ((now - last_usb_tx_time) >= 1000U)) {
-        last_usb_tx_time = now;
-
-        char usb_buffer[64];
-        snprintf(usb_buffer, sizeof(usb_buffer),
-                 "ADC: %.3f V  Current: %.2f A\r\n",
-                 voltage, current);
-        USB_Driver_WriteString(usb_buffer);
-      }
-
-      time += 1;
     }
     /* USER CODE END WHILE */
 
@@ -240,8 +190,7 @@ void SystemClock_Config(void)
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI48|RCC_OSCILLATORTYPE_MSI;
-  RCC_OscInitStruct.HSI48State = RCC_HSI48_ON;
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_MSI;
   RCC_OscInitStruct.MSIState = RCC_MSI_ON;
   RCC_OscInitStruct.MSICalibrationValue = RCC_MSICALIBRATION_DEFAULT;
   RCC_OscInitStruct.MSIClockRange = RCC_MSIRANGE_6;
@@ -273,7 +222,10 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
-
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+  AT09_UART_RxCpltCallback(huart);
+}
 /* USER CODE END 4 */
 
 /**

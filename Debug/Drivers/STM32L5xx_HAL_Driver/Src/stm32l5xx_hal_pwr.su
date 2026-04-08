@@ -14,5 +14,5 @@
 ../Drivers/STM32L5xx_HAL_Driver/Src/stm32l5xx_hal_pwr.c:604:6:HAL_PWR_EnableSEVOnPend	4	static
 ../Drivers/STM32L5xx_HAL_Driver/Src/stm32l5xx_hal_pwr.c:617:6:HAL_PWR_DisableSEVOnPend	4	static
 ../Drivers/STM32L5xx_HAL_Driver/Src/stm32l5xx_hal_pwr.c:631:13:HAL_PWR_PVDCallback	4	static
-../Drivers/STM32L5xx_HAL_Driver/Src/stm32l5xx_hal_pwr.c:670:6:HAL_PWR_ConfigAttributes	16	static
-../Drivers/STM32L5xx_HAL_Driver/Src/stm32l5xx_hal_pwr.c:725:19:HAL_PWR_GetConfigAttributes	24	static
+../Drivers/STM32L5xx_HAL_Driver/Src/stm32l5xx_hal_pwr.c:677:6:HAL_PWR_ConfigAttributes	16	static
+../Drivers/STM32L5xx_HAL_Driver/Src/stm32l5xx_hal_pwr.c:732:19:HAL_PWR_GetConfigAttributes	24	static

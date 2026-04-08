@@ -628,6 +628,28 @@ void SH1106_UpdateScreenDMA(void)
     }
 }
 
+void SH1106_SetBufferAndFlush(const uint8_t *data)
+{
+    /* Convert row-major MSB-first bitmap to SH1106 page format.
+       Input:  byte = 8 horizontal pixels, MSB = leftmost, 16 bytes/row
+       SH1106: byte = 8 vertical pixels in a page column, LSB = top row */
+    for (uint8_t page = 0; page < 8; page++) {
+        for (uint8_t col = 0; col < SH1106_WIDTH; col++) {
+            uint8_t page_byte = 0;
+            for (uint8_t bit = 0; bit < 8; bit++) {
+                uint8_t row = page * 8 + bit;
+                uint16_t src_byte = row * 16 + (col >> 3);
+                uint8_t  src_bit  = 7 - (col & 7);
+                if ((data[src_byte] >> src_bit) & 1) {
+                    page_byte |= (1 << bit);
+                }
+            }
+            SH1106_Buffer[page * SH1106_WIDTH + col] = page_byte;
+        }
+    }
+    SH1106_UpdateScreenDMA();
+}
+
 /* ----- Built-in 5×8 font for SH1106_DrawString -------------------------- */
 
 static const uint8_t font5x8[][5] = {
