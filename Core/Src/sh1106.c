@@ -1,8 +1,8 @@
 #include "sh1106.h"
 
 // Remember to update this based on the I2C instance
-extern I2C_HandleTypeDef hi2c1;
-#define SH1106_I2C (&hi2c1)
+extern I2C_HandleTypeDef hi2c2;
+#define SH1106_I2C (&hi2c2)
 
 /* Write command */
 #define SH1106_WRITECOMMAND(command)      SH1106_I2C_Write(SH1106_I2C_ADDR, 0x00, (command))

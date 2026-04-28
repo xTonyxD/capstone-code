@@ -17,6 +17,10 @@ extern "C" {
 #define AT09_FRAME_SIZE       1024
 #define AT09_DATA_TYPE_VIDEO  0x02
 
+/* Audio packet streaming (109-byte ADPCM packets) */
+#define AT09_AUDIO_PKT_SIZE   109
+#define AT09_DATA_TYPE_AUDIO  0xAA
+
 /* Debug globals — add to CubeIDE Live Expressions */
 extern volatile uint8_t  dbg_uart_rx_buf[AT09_RX_BUF_SIZE];
 extern volatile uint16_t dbg_uart_rx_len;
@@ -25,6 +29,10 @@ extern volatile uint8_t  dbg_uart_last_byte;
 /* Video frame double-buffer: written by ISR, consumed by main loop */
 extern volatile uint8_t  at09_frame_buf[AT09_FRAME_SIZE];
 extern volatile uint8_t  at09_frame_ready;
+
+/* Audio packet buffer: written by ISR, consumed by main loop */
+extern volatile uint8_t  at09_audio_pkt_buf[AT09_AUDIO_PKT_SIZE];
+extern volatile uint8_t  at09_audio_pkt_ready;
 
 typedef struct {
     UART_HandleTypeDef *huart;
@@ -85,6 +93,11 @@ uint16_t AT09_Read(uint8_t *buf, uint16_t bufSize);
  *         Call after copying at09_frame_buf to the display.
  */
 void AT09_AckFrame(void);
+
+/**
+ * @brief  Acknowledge that the audio packet has been consumed.
+ */
+void AT09_AckAudioPacket(void);
 
 /**
  * @brief  Check for partial-frame timeout.

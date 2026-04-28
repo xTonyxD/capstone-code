@@ -18,6 +18,8 @@ Core/Src/system_stm32l5xx.o: ../Core/Src/system_stm32l5xx.c \
  ../Drivers/STM32L5xx_HAL_Driver/Inc/stm32l5xx_hal_dma.h \
  ../Drivers/STM32L5xx_HAL_Driver/Inc/stm32l5xx_hal_dma_ex.h \
  ../Drivers/STM32L5xx_HAL_Driver/Inc/stm32l5xx_hal_cortex.h \
+ ../Drivers/STM32L5xx_HAL_Driver/Inc/stm32l5xx_hal_dac.h \
+ ../Drivers/STM32L5xx_HAL_Driver/Inc/stm32l5xx_hal_dac_ex.h \
  ../Drivers/STM32L5xx_HAL_Driver/Inc/stm32l5xx_hal_exti.h \
  ../Drivers/STM32L5xx_HAL_Driver/Inc/stm32l5xx_hal_flash.h \
  ../Drivers/STM32L5xx_HAL_Driver/Inc/stm32l5xx_hal_flash_ex.h \
@@ -48,6 +50,8 @@ Core/Src/system_stm32l5xx.o: ../Core/Src/system_stm32l5xx.c \
 ../Drivers/STM32L5xx_HAL_Driver/Inc/stm32l5xx_hal_dma.h:
 ../Drivers/STM32L5xx_HAL_Driver/Inc/stm32l5xx_hal_dma_ex.h:
 ../Drivers/STM32L5xx_HAL_Driver/Inc/stm32l5xx_hal_cortex.h:
+../Drivers/STM32L5xx_HAL_Driver/Inc/stm32l5xx_hal_dac.h:
+../Drivers/STM32L5xx_HAL_Driver/Inc/stm32l5xx_hal_dac_ex.h:
 ../Drivers/STM32L5xx_HAL_Driver/Inc/stm32l5xx_hal_exti.h:
 ../Drivers/STM32L5xx_HAL_Driver/Inc/stm32l5xx_hal_flash.h:
 ../Drivers/STM32L5xx_HAL_Driver/Inc/stm32l5xx_hal_flash_ex.h:

@@ -18,6 +18,8 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "dac.h"
+#include "dma.h"
 #include "i2c.h"
 #include "icache.h"
 #include "usart.h"
@@ -27,6 +29,7 @@
 /* USER CODE BEGIN Includes */
 #include "sh1106.h"
 #include "at09_ble.h"
+#include "audio_packet.h"
 #include <string.h>
 #include <stdio.h>
 #include <stdbool.h>
@@ -127,17 +130,54 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_DMA_Init();
   MX_USART2_UART_Init();
-  MX_I2C1_Init();
   MX_ICACHE_Init();
-  MX_UART4_Init();
+  MX_DAC1_Init();
+  MX_I2C2_Init();
+  MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
 
+  /* I2C bus scan: sweep all 7-bit addresses and report over USART2 */
+  {
+    char msg[48];
+    const char *hdr = "[I2C] Scanning bus...\r\n";
+    HAL_UART_Transmit(&huart2, (uint8_t *)hdr, strlen(hdr), 500);
+    int found = 0;
+    for (uint8_t addr = 1; addr <= 127; addr++) {
+      if (HAL_I2C_IsDeviceReady(&hi2c2, (uint16_t)(addr << 1), 2, 50) == HAL_OK) {
+        int n = snprintf(msg, sizeof(msg), "[I2C] ACK at 0x%02X\r\n", addr);
+        HAL_UART_Transmit(&huart2, (uint8_t *)msg, n, 500);
+        found++;
+      }
+    }
+    if (found == 0) {
+      const char *none = "[I2C] No devices found\r\n";
+      HAL_UART_Transmit(&huart2, (uint8_t *)none, strlen(none), 500);
+    } else {
+      int n = snprintf(msg, sizeof(msg), "[I2C] Scan done, %d device(s)\r\n", found);
+      HAL_UART_Transmit(&huart2, (uint8_t *)msg, n, 500);
+    }
+  }
+
   SH1106_Init();
-  AT09_Init(&huart4);
+  AT09_Init(&huart1);
+  {
+	  char msg[48];
+	  int penisballsinitmessage = snprintf(msg, sizeof(msg), "testing blah blah sending uart1");
+	  HAL_UART_Transmit(&huart2, (uint8_t *)msg, penisballsinitmessage, 500);
+	  HAL_UART_Transmit(&huart1, (uint8_t *)msg, penisballsinitmessage, 500);
+
+	  }
+  Audio_Init();
 
   // Show smiley by default on boot
   DrawFace(true);
+
+  // Pre-fill ring buffer with fake 440 Hz tone, then start DAC playback.
+  // Comment out these two lines once real BLE audio packets are arriving.
+  Audio_FeedFakeData();
+  Audio_StartPlayback();
 
   /* USER CODE END 2 */
 
@@ -151,6 +191,18 @@ int main(void)
       SH1106_SetBufferAndFlush((const uint8_t *)at09_frame_buf);
       AT09_AckFrame();
     }
+
+    /* ---- Audio packet streaming (start byte 0xAA) ---- */
+    if (at09_audio_pkt_ready) {
+      Audio_ProcessPacket((const uint8_t *)at09_audio_pkt_buf);
+      AT09_AckAudioPacket();
+      if (!Audio_IsPlaying()) {
+        Audio_StartPlayback();
+      }
+    }
+
+    /* Keep the fake 440 Hz tone looping (remove once using real BLE data) */
+    Audio_FeedFakeData();
 
     /* ---- Legacy single-byte commands ---- */
     if (AT09_DataAvailable()) {

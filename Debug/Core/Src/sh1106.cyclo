@@ -27,5 +27,6 @@
 ../Core/Src/sh1106.c:607:9:SH1106_IsBusy	3
 ../Core/Src/sh1106.c:612:6:SH1106_Flush	3
 ../Core/Src/sh1106.c:619:6:SH1106_UpdateScreenDMA	2
-../Core/Src/sh1106.c:732:6:SH1106_DrawString	5
-../Core/Src/sh1106.c:1067:7:FONTS_GetStringSize	1
+../Core/Src/sh1106.c:631:6:SH1106_SetBufferAndFlush	5
+../Core/Src/sh1106.c:754:6:SH1106_DrawString	5
+../Core/Src/sh1106.c:1089:7:FONTS_GetStringSize	1

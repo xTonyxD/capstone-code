@@ -16,10 +16,17 @@ volatile uint8_t  at09_frame_ready = 0;
 static   uint16_t frame_pos = 0;
 static   volatile uint32_t frame_start_tick = 0;
 
+/* ---- Audio packet accumulator ---- */
+volatile uint8_t  at09_audio_pkt_buf[AT09_AUDIO_PKT_SIZE];
+volatile uint8_t  at09_audio_pkt_ready = 0;
+static   uint16_t audio_pkt_pos = 0;
+static   volatile uint32_t audio_pkt_start_tick = 0;
+
 /* Timeout: if a frame isn't complete within this many ms, discard it */
 #define AT09_FRAME_TIMEOUT_MS  2000
+#define AT09_AUDIO_TIMEOUT_MS  500
 
-typedef enum { RX_IDLE, RX_VIDEO_FRAME } AT09_RxState_t;
+typedef enum { RX_IDLE, RX_VIDEO_FRAME, RX_AUDIO_PACKET } AT09_RxState_t;
 static volatile AT09_RxState_t rxState = RX_IDLE;
 
 /* ---- Public API -------------------------------------------------------- */
@@ -102,13 +109,22 @@ void AT09_AckFrame(void)
     at09_frame_ready = 0;
 }
 
+void AT09_AckAudioPacket(void)
+{
+    at09_audio_pkt_ready = 0;
+}
+
 void AT09_CheckFrameTimeout(void)
 {
     if (rxState == RX_VIDEO_FRAME &&
         (HAL_GetTick() - frame_start_tick) > AT09_FRAME_TIMEOUT_MS) {
-        /* Partial frame timed out — discard and return to idle */
         rxState   = RX_IDLE;
         frame_pos = 0;
+    }
+    if (rxState == RX_AUDIO_PACKET &&
+        (HAL_GetTick() - audio_pkt_start_tick) > AT09_AUDIO_TIMEOUT_MS) {
+        rxState       = RX_IDLE;
+        audio_pkt_pos = 0;
     }
 }
 
@@ -127,13 +143,25 @@ void AT09_UART_RxCpltCallback(UART_HandleTypeDef *huart)
         }
         break;
 
+    case RX_AUDIO_PACKET:
+        at09_audio_pkt_buf[audio_pkt_pos++] = rxByte;
+        if (audio_pkt_pos >= AT09_AUDIO_PKT_SIZE) {
+            at09_audio_pkt_ready = 1;
+            rxState = RX_IDLE;
+        }
+        break;
+
     case RX_IDLE:
     default:
         if (rxByte == AT09_DATA_TYPE_VIDEO) {
-            /* Start accumulating a new video frame */
             frame_pos = 0;
             frame_start_tick = HAL_GetTick();
             rxState = RX_VIDEO_FRAME;
+        } else if (rxByte == AT09_DATA_TYPE_AUDIO && !at09_audio_pkt_ready) {
+            at09_audio_pkt_buf[0] = rxByte;
+            audio_pkt_pos = 1;
+            audio_pkt_start_tick = HAL_GetTick();
+            rxState = RX_AUDIO_PACKET;
         } else {
             /* Normal data — pass to AT09 command buffer */
             if (at09.rxLen < AT09_RX_BUF_SIZE - 1) {
