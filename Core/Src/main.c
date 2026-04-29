@@ -39,15 +39,32 @@
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
 
+typedef struct {
+  uint32_t raw;
+  uint32_t baseline;
+  uint32_t threshold;
+  uint32_t ambient_threshold;
+  uint32_t delta;
+  uint32_t threshold_min;
+  uint32_t threshold_divisor;
+  uint32_t ambient_threshold_min;
+  uint32_t ambient_threshold_divisor;
+  uint8_t baseline_ok;
+  uint8_t is_active;
+  uint8_t last_tx_byte;
+} TouchDebug_t;
+
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 
-#define TOUCH_SAMPLE_INTERVAL_MS  25U
+#define TOUCH_SAMPLE_INTERVAL_MS  5U
 #define TOUCH_BASELINE_SAMPLES    8U
-#define TOUCH_THRESHOLD_MIN       80U
-#define TOUCH_THRESHOLD_DIVISOR   16U
+#define TOUCH_THRESHOLD_MIN       20U
+#define TOUCH_THRESHOLD_DIVISOR   4U
+#define TOUCH_AMBIENT_THRESHOLD_MIN      200U
+#define TOUCH_AMBIENT_THRESHOLD_DIVISOR  2U
 
 /* USER CODE END PD */
 
@@ -66,6 +83,21 @@ static bool touch_baseline_valid = false;
 static bool touch_active = false;
 static uint32_t touch_baseline = 0;
 static uint32_t touch_last_sample_ms = 0;
+
+volatile TouchDebug_t dbg_touch = {
+  .raw = 0,
+  .baseline = 0,
+  .threshold = 0,
+  .ambient_threshold = 0,
+  .delta = 0,
+  .threshold_min = TOUCH_THRESHOLD_MIN,
+  .threshold_divisor = TOUCH_THRESHOLD_DIVISOR,
+  .ambient_threshold_min = TOUCH_AMBIENT_THRESHOLD_MIN,
+  .ambient_threshold_divisor = TOUCH_AMBIENT_THRESHOLD_DIVISOR,
+  .baseline_ok = 0,
+  .is_active = 0,
+  .last_tx_byte = 0,
+};
 
 /* USER CODE END PV */
 
@@ -141,6 +173,7 @@ static bool Touch_ReadRaw(uint32_t *value) {
   }
 
   *value = HAL_TSC_GroupGetValue(&htsc, TSC_GROUP1_IDX);
+  dbg_touch.raw = *value;
   return true;
 }
 
@@ -163,15 +196,20 @@ static void Touch_InitBaseline(void) {
     touch_baseline = sum / sample_count;
     touch_baseline_valid = true;
     touch_last_sample_ms = HAL_GetTick();
+    dbg_touch.baseline = touch_baseline;
+    dbg_touch.baseline_ok = 1U;
   }
 }
 
 static void Touch_Process(void) {
   uint32_t sample = 0;
   uint32_t threshold = 0;
+  uint32_t ambient_threshold = 0;
+  uint32_t delta = 0;
   bool touched = false;
 
   if (!touch_baseline_valid) {
+    dbg_touch.baseline_ok = 0U;
     return;
   }
 
@@ -189,18 +227,38 @@ static void Touch_Process(void) {
     threshold = TOUCH_THRESHOLD_MIN;
   }
 
-  touched = (sample > (touch_baseline + threshold));
+  ambient_threshold = threshold / TOUCH_AMBIENT_THRESHOLD_DIVISOR;
+  if (ambient_threshold < TOUCH_AMBIENT_THRESHOLD_MIN) {
+    ambient_threshold = TOUCH_AMBIENT_THRESHOLD_MIN;
+  }
 
-  if (!touched) {
+  dbg_touch.threshold = threshold;
+  dbg_touch.ambient_threshold = ambient_threshold;
+
+  if (sample <= touch_baseline) {
+    delta = touch_baseline - sample;
+  }
+  dbg_touch.delta = delta;
+
+  if (touch_active) {
+    touched = (delta >= ambient_threshold);
+  } else {
+    touched = (delta >= threshold);
+  }
+
+  if (!touched && delta < ambient_threshold) {
     touch_baseline = ((touch_baseline * 15U) + sample) / 16U;
+    dbg_touch.baseline = touch_baseline;
   }
 
   if (touched && !touch_active) {
     uint8_t touch_byte = 0x31;
     AT09_SendBytes(&touch_byte, 1);
+    dbg_touch.last_tx_byte = touch_byte;
   }
 
   touch_active = touched;
+  dbg_touch.is_active = touched ? 1U : 0U;
 }
 
 /* USER CODE END 0 */

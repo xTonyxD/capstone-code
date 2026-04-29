@@ -1,0 +1,9 @@
+../Core/Src/main.c:117:13:DrawFace	40	static
+../Core/Src/main.c:151:13:SetFaceState	24	static
+../Core/Src/main.c:166:13:Touch_ReadRaw	16	static
+../Core/Src/main.c:180:13:Touch_InitBaseline	24	static
+../Core/Src/main.c:204:13:Touch_Process	32	static
+../Core/Src/main.c:270:5:main	168	static
+../Core/Src/main.c:389:6:SystemClock_Config	104	static
+../Core/Src/main.c:436:6:HAL_UART_RxCpltCallback	16	static
+../Core/Src/main.c:448:6:Error_Handler	4	static,ignoring_inline_asm

@@ -29,6 +29,7 @@ Core/Src/icache.o: ../Core/Src/icache.c ../Core/Inc/icache.h \
  ../Drivers/STM32L5xx_HAL_Driver/Inc/stm32l5xx_hal_icache.h \
  ../Drivers/STM32L5xx_HAL_Driver/Inc/stm32l5xx_hal_pwr.h \
  ../Drivers/STM32L5xx_HAL_Driver/Inc/stm32l5xx_hal_pwr_ex.h \
+ ../Drivers/STM32L5xx_HAL_Driver/Inc/stm32l5xx_hal_tsc.h \
  ../Drivers/STM32L5xx_HAL_Driver/Inc/stm32l5xx_hal_uart.h \
  ../Drivers/STM32L5xx_HAL_Driver/Inc/stm32l5xx_hal_uart_ex.h
 ../Core/Inc/icache.h:
@@ -63,5 +64,6 @@ Core/Src/icache.o: ../Core/Src/icache.c ../Core/Inc/icache.h \
 ../Drivers/STM32L5xx_HAL_Driver/Inc/stm32l5xx_hal_icache.h:
 ../Drivers/STM32L5xx_HAL_Driver/Inc/stm32l5xx_hal_pwr.h:
 ../Drivers/STM32L5xx_HAL_Driver/Inc/stm32l5xx_hal_pwr_ex.h:
+../Drivers/STM32L5xx_HAL_Driver/Inc/stm32l5xx_hal_tsc.h:
 ../Drivers/STM32L5xx_HAL_Driver/Inc/stm32l5xx_hal_uart.h:
 ../Drivers/STM32L5xx_HAL_Driver/Inc/stm32l5xx_hal_uart_ex.h:
