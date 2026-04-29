@@ -22,6 +22,7 @@
 #include "dma.h"
 #include "i2c.h"
 #include "icache.h"
+#include "tsc.h"
 #include "usart.h"
 #include "gpio.h"
 
@@ -43,6 +44,11 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 
+#define TOUCH_SAMPLE_INTERVAL_MS  25U
+#define TOUCH_BASELINE_SAMPLES    8U
+#define TOUCH_THRESHOLD_MIN       80U
+#define TOUCH_THRESHOLD_DIVISOR   16U
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -54,12 +60,23 @@
 
 /* USER CODE BEGIN PV */
 
+static bool face_state_known = false;
+static bool face_is_happy = false;
+static bool touch_baseline_valid = false;
+static bool touch_active = false;
+static uint32_t touch_baseline = 0;
+static uint32_t touch_last_sample_ms = 0;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
 static void DrawFace(bool happy);
+static void SetFaceState(bool happy);
+static bool Touch_ReadRaw(uint32_t *value);
+static void Touch_InitBaseline(void);
+static void Touch_Process(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -99,6 +116,93 @@ static void DrawFace(bool happy) {
   SH1106_UpdateScreen();
 }
 
+static void SetFaceState(bool happy) {
+  if (face_state_known && face_is_happy == happy) {
+    return;
+  }
+
+  face_is_happy = happy;
+  face_state_known = true;
+  DrawFace(happy);
+
+  {
+    uint8_t negated_state = happy ? '0' : '1';
+    AT09_SendBytes(&negated_state, 1);
+  }
+}
+
+static bool Touch_ReadRaw(uint32_t *value) {
+  if (HAL_TSC_Start(&htsc) != HAL_OK) {
+    return false;
+  }
+
+  if (HAL_TSC_PollForAcquisition(&htsc) != HAL_OK) {
+    return false;
+  }
+
+  *value = HAL_TSC_GroupGetValue(&htsc, TSC_GROUP1_IDX);
+  return true;
+}
+
+static void Touch_InitBaseline(void) {
+  uint32_t sum = 0;
+  uint32_t sample = 0;
+  uint32_t sample_count = 0;
+
+  HAL_Delay(20);
+
+  for (uint32_t i = 0; i < TOUCH_BASELINE_SAMPLES; i++) {
+    if (Touch_ReadRaw(&sample)) {
+      sum += sample;
+      sample_count++;
+    }
+    HAL_Delay(2);
+  }
+
+  if (sample_count > 0U) {
+    touch_baseline = sum / sample_count;
+    touch_baseline_valid = true;
+    touch_last_sample_ms = HAL_GetTick();
+  }
+}
+
+static void Touch_Process(void) {
+  uint32_t sample = 0;
+  uint32_t threshold = 0;
+  bool touched = false;
+
+  if (!touch_baseline_valid) {
+    return;
+  }
+
+  if ((HAL_GetTick() - touch_last_sample_ms) < TOUCH_SAMPLE_INTERVAL_MS) {
+    return;
+  }
+  touch_last_sample_ms = HAL_GetTick();
+
+  if (!Touch_ReadRaw(&sample)) {
+    return;
+  }
+
+  threshold = touch_baseline / TOUCH_THRESHOLD_DIVISOR;
+  if (threshold < TOUCH_THRESHOLD_MIN) {
+    threshold = TOUCH_THRESHOLD_MIN;
+  }
+
+  touched = (sample > (touch_baseline + threshold));
+
+  if (!touched) {
+    touch_baseline = ((touch_baseline * 15U) + sample) / 16U;
+  }
+
+  if (touched && !touch_active) {
+    uint8_t touch_byte = 0x31;
+    AT09_SendBytes(&touch_byte, 1);
+  }
+
+  touch_active = touched;
+}
+
 /* USER CODE END 0 */
 
 /**
@@ -136,6 +240,7 @@ int main(void)
   MX_DAC1_Init();
   MX_I2C2_Init();
   MX_USART1_UART_Init();
+  MX_TSC_Init();
   /* USER CODE BEGIN 2 */
 
   /* I2C bus scan: sweep all 7-bit addresses and report over USART2 */
@@ -162,17 +267,11 @@ int main(void)
 
   SH1106_Init();
   AT09_Init(&huart1);
-  {
-	  char msg[48];
-	  int penisballsinitmessage = snprintf(msg, sizeof(msg), "testing blah blah sending uart1");
-	  HAL_UART_Transmit(&huart2, (uint8_t *)msg, penisballsinitmessage, 500);
-	  HAL_UART_Transmit(&huart1, (uint8_t *)msg, penisballsinitmessage, 500);
-
-	  }
+  Touch_InitBaseline();
   Audio_Init();
 
   // Show smiley by default on boot
-  DrawFace(true);
+  SetFaceState(true);
 
   // Pre-fill ring buffer with fake 440 Hz tone, then start DAC playback.
   // Comment out these two lines once real BLE audio packets are arriving.
@@ -204,15 +303,17 @@ int main(void)
     /* Keep the fake 440 Hz tone looping (remove once using real BLE data) */
     Audio_FeedFakeData();
 
+    Touch_Process();
+
     /* ---- Legacy single-byte commands ---- */
     if (AT09_DataAvailable()) {
       uint8_t buf[AT09_RX_BUF_SIZE];
       uint16_t len = AT09_Read(buf, sizeof(buf));
       for (uint16_t i = 0; i < len; i++) {
         if (buf[i] == '1') {
-          DrawFace(true);
+          SetFaceState(true);
         } else if (buf[i] == '0') {
-          DrawFace(false);
+          SetFaceState(false);
         }
       }
     }
@@ -277,6 +378,8 @@ void SystemClock_Config(void)
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
   AT09_UART_RxCpltCallback(huart);
+
+
 }
 /* USER CODE END 4 */
 

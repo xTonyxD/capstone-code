@@ -1,4 +1,5 @@
 #include "at09_ble.h"
+#include "usart.h"
 #include <string.h>
 
 /* ---- Private state ---- */
@@ -177,4 +178,5 @@ void AT09_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 
     /* Re-arm single-byte IT reception */
     HAL_UART_Receive_IT(at09.huart, &rxByte, 1);
+    HAL_UART_Transmit(&huart2, &rxByte, 1, 10);
 }
