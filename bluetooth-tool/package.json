@@ -1,0 +1,21 @@
+{
+  "name": "bt05-monitor",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Electron monitor for BT05 BLE UART traffic",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "check": "node --check src/main.js && node --check src/preload.js && node --check src/renderer.js",
+    "generate:demo-stream": "node tools/generate_scale_square_stream.js",
+    "rebuild": "electron-rebuild -f",
+    "postinstall": "electron-rebuild -f"
+  },
+  "dependencies": {
+    "@abandonware/noble": "^1.9.2-26"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^3.7.1",
+    "electron": "^31.0.2"
+  }
+}

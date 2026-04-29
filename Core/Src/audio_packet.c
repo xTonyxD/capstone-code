@@ -43,6 +43,8 @@ static uint8_t last_face  = 0;
 /* Pre-built fake packet (generated once) */
 static uint8_t  fake_pkt[AUDIO_PKT_TOTAL_SIZE];
 static bool     fake_pkt_ready = false;
+static uint8_t  last_pkt[AUDIO_PKT_TOTAL_SIZE];
+static bool     last_pkt_ready = false;
 
 /* =====================================================================
  *  Ring-buffer helpers
@@ -161,6 +163,7 @@ void Audio_Init(void)
     decoder.predicted_sample = 0;
     decoder.step_index = 0;
     playing = false;
+    last_pkt_ready = false;
 
     TIM6_Setup();
 
@@ -177,6 +180,11 @@ bool Audio_ProcessPacket(const uint8_t *raw)
 
     if (raw[AUDIO_PKT_TOTAL_SIZE - 1] != compute_checksum(raw, AUDIO_PKT_TOTAL_SIZE))
         return false;
+
+    if (raw != last_pkt) {
+        memcpy(last_pkt, raw, AUDIO_PKT_TOTAL_SIZE);
+    }
+    last_pkt_ready = true;
 
     /* Parse header via packed struct (ARM Cortex-M33 handles unaligned) */
     const AudioPacket_t *pkt = (const AudioPacket_t *)raw;
@@ -304,4 +312,17 @@ void Audio_FeedFakeData(void)
     while (ring_count() < AUDIO_RING_BUF_SIZE / 2) {
         Audio_ProcessPacket(fake_pkt);
     }
+}
+
+void Audio_FeedLastPacket(void)
+{
+    if (!last_pkt_ready) {
+        return;
+    }
+
+    if (ring_count() >= AUDIO_SAMPLES_PER_PKT) {
+        return;
+    }
+
+    Audio_ProcessPacket(last_pkt);
 }

@@ -70,6 +70,10 @@ void Audio_GenerateFakePacket(uint8_t *buf);
  *  Call from the main loop — does nothing if buffer is already ≥ half full. */
 void Audio_FeedFakeData(void);
 
+/** Requeue the last valid audio packet when playback is running low.
+ *  Call from the main loop after switching off fake audio. */
+void Audio_FeedLastPacket(void);
+
 #ifdef __cplusplus
 }
 #endif

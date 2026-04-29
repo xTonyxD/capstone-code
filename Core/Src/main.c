@@ -54,6 +54,23 @@ typedef struct {
   uint8_t last_tx_byte;
 } TouchDebug_t;
 
+typedef enum {
+  BT_PROTO_WAIT_SYNC0 = 0,
+  BT_PROTO_WAIT_SYNC1,
+  BT_PROTO_WAIT_TYPE,
+  BT_PROTO_WAIT_LENGTH,
+  BT_PROTO_WAIT_PAYLOAD,
+  BT_PROTO_WAIT_CHECKSUM,
+} BT_ProtocolParseState_t;
+
+typedef struct {
+  BT_ProtocolParseState_t state;
+  uint8_t type;
+  uint8_t length;
+  uint8_t index;
+  uint8_t payload[16];
+} BT_ProtocolParser_t;
+
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -62,9 +79,20 @@ typedef struct {
 #define TOUCH_SAMPLE_INTERVAL_MS  5U
 #define TOUCH_BASELINE_SAMPLES    8U
 #define TOUCH_THRESHOLD_MIN       20U
-#define TOUCH_THRESHOLD_DIVISOR   4U
+#define TOUCH_THRESHOLD_DIVISOR   11U
 #define TOUCH_AMBIENT_THRESHOLD_MIN      200U
 #define TOUCH_AMBIENT_THRESHOLD_DIVISOR  2U
+
+#define BT_PROTO_SYNC0                  0xA5U
+#define BT_PROTO_SYNC1                  0x5AU
+#define BT_PROTO_MAX_PAYLOAD            16U
+#define BT_PROTO_CMD_SET_FACE           0x01U
+#define BT_PROTO_CMD_GET_STATUS         0x02U
+#define BT_PROTO_CMD_PING               0x03U
+#define BT_PROTO_EVT_TOUCH_STATE        0x81U
+#define BT_PROTO_EVT_FACE_STATE         0x82U
+#define BT_PROTO_EVT_STATUS             0x83U
+#define BT_PROTO_EVT_PONG               0x84U
 
 /* USER CODE END PD */
 
@@ -81,8 +109,10 @@ static bool face_state_known = false;
 static bool face_is_happy = false;
 static bool touch_baseline_valid = false;
 static bool touch_active = false;
+static bool fake_audio_enabled = true;
 static uint32_t touch_baseline = 0;
 static uint32_t touch_last_sample_ms = 0;
+static BT_ProtocolParser_t bt_protocol_parser = {0};
 
 volatile TouchDebug_t dbg_touch = {
   .raw = 0,
@@ -105,47 +135,237 @@ volatile TouchDebug_t dbg_touch = {
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
 static void DrawFace(bool happy);
+static void DrawCuteEye(int16_t center_x, int16_t center_y, bool sad, bool left_eye);
 static void SetFaceState(bool happy);
 static bool Touch_ReadRaw(uint32_t *value);
 static void Touch_InitBaseline(void);
 static void Touch_Process(void);
+static void BT_ProtocolResetParser(void);
+static bool BT_ProtocolProcessByte(uint8_t byte);
+static void BT_ProtocolHandleFrame(uint8_t type, const uint8_t *payload, uint8_t length);
+static void BT_ProtocolSendFrame(uint8_t type, const uint8_t *payload, uint8_t length);
+static void BT_ProtocolSendFaceState(bool happy);
+static void BT_ProtocolSendTouchState(bool active);
+static void BT_ProtocolSendStatus(void);
+static void BT_ProtocolSendPong(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
+static void DrawCuteEye(int16_t center_x, int16_t center_y, bool sad, bool left_eye) {
+  const int16_t eye_scale = 3;
+  const int16_t eye_radius = 6 * eye_scale;
+  const int16_t pupil_radius = 2 * eye_scale;
+  const int16_t highlight_radius = eye_scale - 1;
+  int16_t pupil_x = center_x + eye_scale;
+  int16_t pupil_y = center_y + eye_scale;
+
+  SH1106_DrawFilledCircle(center_x, center_y, eye_radius, SH1106_COLOR_WHITE);
+
+  if (sad) {
+    pupil_x = left_eye ? (center_x - eye_scale) : (center_x + eye_scale);
+    pupil_y = center_y + (2 * eye_scale);
+
+    if (left_eye) {
+      SH1106_DrawLine(center_x - (6 * eye_scale), center_y - (4 * eye_scale), center_x + (6 * eye_scale), center_y - eye_scale, SH1106_COLOR_BLACK);
+      SH1106_DrawLine(center_x - (6 * eye_scale), center_y - (3 * eye_scale), center_x + (6 * eye_scale), center_y, SH1106_COLOR_BLACK);
+      SH1106_DrawLine(center_x - (5 * eye_scale), center_y - (9 * eye_scale), center_x + (4 * eye_scale), center_y - (7 * eye_scale), SH1106_COLOR_WHITE);
+    } else {
+      SH1106_DrawLine(center_x - (6 * eye_scale), center_y - eye_scale, center_x + (6 * eye_scale), center_y - (4 * eye_scale), SH1106_COLOR_BLACK);
+      SH1106_DrawLine(center_x - (6 * eye_scale), center_y, center_x + (6 * eye_scale), center_y - (3 * eye_scale), SH1106_COLOR_BLACK);
+      SH1106_DrawLine(center_x - (4 * eye_scale), center_y - (7 * eye_scale), center_x + (5 * eye_scale), center_y - (9 * eye_scale), SH1106_COLOR_WHITE);
+    }
+  } else {
+    SH1106_DrawLine(center_x - (5 * eye_scale), center_y - (8 * eye_scale), center_x - eye_scale, center_y - (6 * eye_scale), SH1106_COLOR_WHITE);
+    SH1106_DrawLine(center_x + eye_scale, center_y - (6 * eye_scale), center_x + (5 * eye_scale), center_y - (8 * eye_scale), SH1106_COLOR_WHITE);
+  }
+
+  SH1106_DrawFilledCircle(pupil_x, pupil_y, pupil_radius, SH1106_COLOR_BLACK);
+  SH1106_DrawFilledCircle(pupil_x - eye_scale, pupil_y - eye_scale, highlight_radius, SH1106_COLOR_WHITE);
+}
+
 static void DrawFace(bool happy) {
   SH1106_Fill(SH1106_COLOR_BLACK);
 
-  // Head outline: circle centred at (64,32) r=28
-  SH1106_DrawCircle(64, 32, 28, SH1106_COLOR_WHITE);
-
-  // Left eye
-  SH1106_DrawFilledCircle(54, 24, 3, SH1106_COLOR_WHITE);
-  // Right eye
-  SH1106_DrawFilledCircle(74, 24, 3, SH1106_COLOR_WHITE);
-
-  if (happy) {
-    // Smile: arc approximated with short line segments
-    for (int i = -10; i < 10; i++) {
-      int x = 64 + i;
-      // parabola opening downward for smile
-      int y = 40 + (i * i) / 12;
-      SH1106_DrawPixel(x, y, SH1106_COLOR_WHITE);
-      SH1106_DrawPixel(x, y + 1, SH1106_COLOR_WHITE);
-    }
-  } else {
-    // Frown: arc approximated with short line segments
-    for (int i = -10; i < 10; i++) {
-      int x = 64 + i;
-      // parabola opening upward for frown
-      int y = 48 - (i * i) / 12;
-      SH1106_DrawPixel(x, y, SH1106_COLOR_WHITE);
-      SH1106_DrawPixel(x, y + 1, SH1106_COLOR_WHITE);
-    }
-  }
+  DrawCuteEye(42, happy ? 30 : 33, !happy, true);
+  DrawCuteEye(86, happy ? 30 : 33, !happy, false);
 
   SH1106_UpdateScreen();
+}
+
+static uint8_t BT_ProtocolChecksum(uint8_t type, uint8_t length, const uint8_t *payload) {
+  uint8_t checksum = type ^ length;
+
+  for (uint8_t i = 0; i < length; i++) {
+    checksum ^= payload[i];
+  }
+
+  return checksum;
+}
+
+static uint16_t BT_ProtocolClampU16(uint32_t value) {
+  if (value > 0xFFFFU) {
+    return 0xFFFFU;
+  }
+
+  return (uint16_t)value;
+}
+
+static void BT_ProtocolWriteU16LE(uint8_t *dst, uint16_t value) {
+  dst[0] = (uint8_t)(value & 0xFFU);
+  dst[1] = (uint8_t)((value >> 8) & 0xFFU);
+}
+
+static void BT_ProtocolWriteU32LE(uint8_t *dst, uint32_t value) {
+  dst[0] = (uint8_t)(value & 0xFFU);
+  dst[1] = (uint8_t)((value >> 8) & 0xFFU);
+  dst[2] = (uint8_t)((value >> 16) & 0xFFU);
+  dst[3] = (uint8_t)((value >> 24) & 0xFFU);
+}
+
+static void BT_ProtocolResetParser(void) {
+  bt_protocol_parser.state = BT_PROTO_WAIT_SYNC0;
+  bt_protocol_parser.type = 0U;
+  bt_protocol_parser.length = 0U;
+  bt_protocol_parser.index = 0U;
+}
+
+static void BT_ProtocolSendFrame(uint8_t type, const uint8_t *payload, uint8_t length) {
+  uint8_t frame[2U + 1U + 1U + BT_PROTO_MAX_PAYLOAD + 1U];
+
+  if (length > BT_PROTO_MAX_PAYLOAD) {
+    return;
+  }
+
+  frame[0] = BT_PROTO_SYNC0;
+  frame[1] = BT_PROTO_SYNC1;
+  frame[2] = type;
+  frame[3] = length;
+
+  if ((payload != NULL) && (length > 0U)) {
+    memcpy(&frame[4], payload, length);
+  }
+
+  frame[4U + length] = BT_ProtocolChecksum(type, length, payload);
+  AT09_SendBytes(frame, (uint16_t)(5U + length));
+}
+
+static void BT_ProtocolSendFaceState(bool happy) {
+  uint8_t payload[1];
+
+  payload[0] = happy ? 1U : 0U;
+  BT_ProtocolSendFrame(BT_PROTO_EVT_FACE_STATE, payload, sizeof(payload));
+}
+
+static void BT_ProtocolSendTouchState(bool active) {
+  uint8_t payload[5];
+
+  payload[0] = active ? 1U : 0U;
+  BT_ProtocolWriteU16LE(&payload[1], BT_ProtocolClampU16(dbg_touch.delta));
+  BT_ProtocolWriteU16LE(&payload[3], BT_ProtocolClampU16(dbg_touch.raw));
+  BT_ProtocolSendFrame(BT_PROTO_EVT_TOUCH_STATE, payload, sizeof(payload));
+}
+
+static void BT_ProtocolSendStatus(void) {
+  uint8_t payload[11];
+
+  payload[0] = (uint8_t)((face_is_happy ? 0x01U : 0x00U) |
+                         (touch_active ? 0x02U : 0x00U) |
+                         (touch_baseline_valid ? 0x04U : 0x00U));
+  BT_ProtocolWriteU16LE(&payload[1], BT_ProtocolClampU16(dbg_touch.raw));
+  BT_ProtocolWriteU16LE(&payload[3], BT_ProtocolClampU16(dbg_touch.baseline));
+  BT_ProtocolWriteU16LE(&payload[5], BT_ProtocolClampU16(dbg_touch.delta));
+  BT_ProtocolWriteU16LE(&payload[7], BT_ProtocolClampU16(dbg_touch.threshold));
+  BT_ProtocolWriteU16LE(&payload[9], BT_ProtocolClampU16(dbg_touch.ambient_threshold));
+  BT_ProtocolSendFrame(BT_PROTO_EVT_STATUS, payload, sizeof(payload));
+}
+
+static void BT_ProtocolSendPong(void) {
+  uint8_t payload[4];
+
+  BT_ProtocolWriteU32LE(payload, HAL_GetTick());
+  BT_ProtocolSendFrame(BT_PROTO_EVT_PONG, payload, sizeof(payload));
+}
+
+static void BT_ProtocolHandleFrame(uint8_t type, const uint8_t *payload, uint8_t length) {
+  switch (type) {
+    case BT_PROTO_CMD_SET_FACE:
+      if (length >= 1U) {
+        SetFaceState(payload[0] != 0U);
+      }
+      break;
+
+    case BT_PROTO_CMD_GET_STATUS:
+      BT_ProtocolSendStatus();
+      break;
+
+    case BT_PROTO_CMD_PING:
+      BT_ProtocolSendPong();
+      break;
+
+    default:
+      break;
+  }
+}
+
+static bool BT_ProtocolProcessByte(uint8_t byte) {
+  switch (bt_protocol_parser.state) {
+    case BT_PROTO_WAIT_SYNC0:
+      if (byte == BT_PROTO_SYNC0) {
+        bt_protocol_parser.state = BT_PROTO_WAIT_SYNC1;
+        return true;
+      }
+      return false;
+
+    case BT_PROTO_WAIT_SYNC1:
+      if (byte == BT_PROTO_SYNC1) {
+        bt_protocol_parser.state = BT_PROTO_WAIT_TYPE;
+      } else if (byte == BT_PROTO_SYNC0) {
+        bt_protocol_parser.state = BT_PROTO_WAIT_SYNC1;
+      } else {
+        BT_ProtocolResetParser();
+      }
+      return true;
+
+    case BT_PROTO_WAIT_TYPE:
+      bt_protocol_parser.type = byte;
+      bt_protocol_parser.state = BT_PROTO_WAIT_LENGTH;
+      return true;
+
+    case BT_PROTO_WAIT_LENGTH:
+      if (byte > BT_PROTO_MAX_PAYLOAD) {
+        BT_ProtocolResetParser();
+        return true;
+      }
+
+      bt_protocol_parser.length = byte;
+      bt_protocol_parser.index = 0U;
+      bt_protocol_parser.state = (byte == 0U) ? BT_PROTO_WAIT_CHECKSUM : BT_PROTO_WAIT_PAYLOAD;
+      return true;
+
+    case BT_PROTO_WAIT_PAYLOAD:
+      bt_protocol_parser.payload[bt_protocol_parser.index++] = byte;
+      if (bt_protocol_parser.index >= bt_protocol_parser.length) {
+        bt_protocol_parser.state = BT_PROTO_WAIT_CHECKSUM;
+      }
+      return true;
+
+    case BT_PROTO_WAIT_CHECKSUM:
+      if (byte == BT_ProtocolChecksum(bt_protocol_parser.type,
+                                      bt_protocol_parser.length,
+                                      bt_protocol_parser.payload)) {
+        BT_ProtocolHandleFrame(bt_protocol_parser.type,
+                               bt_protocol_parser.payload,
+                               bt_protocol_parser.length);
+      }
+      BT_ProtocolResetParser();
+      return true;
+
+    default:
+      BT_ProtocolResetParser();
+      return false;
+  }
 }
 
 static void SetFaceState(bool happy) {
@@ -161,6 +381,8 @@ static void SetFaceState(bool happy) {
     uint8_t negated_state = happy ? '0' : '1';
     AT09_SendBytes(&negated_state, 1);
   }
+
+  BT_ProtocolSendFaceState(happy);
 }
 
 static bool Touch_ReadRaw(uint32_t *value) {
@@ -246,9 +468,8 @@ static void Touch_Process(void) {
     touched = (delta >= threshold);
   }
 
-  if (!touched && delta < ambient_threshold) {
-    touch_baseline = ((touch_baseline * 15U) + sample) / 16U;
-    dbg_touch.baseline = touch_baseline;
+  if (touched != touch_active) {
+    BT_ProtocolSendTouchState(touched);
   }
 
   if (touched && !touch_active) {
@@ -351,6 +572,12 @@ int main(void)
 
     /* ---- Audio packet streaming (start byte 0xAA) ---- */
     if (at09_audio_pkt_ready) {
+      if (fake_audio_enabled) {
+        Audio_StopPlayback();
+        Audio_Init();
+        fake_audio_enabled = false;
+      }
+
       Audio_ProcessPacket((const uint8_t *)at09_audio_pkt_buf);
       AT09_AckAudioPacket();
       if (!Audio_IsPlaying()) {
@@ -358,8 +585,12 @@ int main(void)
       }
     }
 
-    /* Keep the fake 440 Hz tone looping (remove once using real BLE data) */
-    Audio_FeedFakeData();
+    /* Keep either the fake tone or the last real packet feeding playback. */
+    if (fake_audio_enabled) {
+      Audio_FeedFakeData();
+    } else {
+      Audio_FeedLastPacket();
+    }
 
     Touch_Process();
 
@@ -368,6 +599,10 @@ int main(void)
       uint8_t buf[AT09_RX_BUF_SIZE];
       uint16_t len = AT09_Read(buf, sizeof(buf));
       for (uint16_t i = 0; i < len; i++) {
+        if (BT_ProtocolProcessByte(buf[i])) {
+          continue;
+        }
+
         if (buf[i] == '1') {
           SetFaceState(true);
         } else if (buf[i] == '0') {

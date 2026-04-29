@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BT05 Protocol Console</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="hero-bar">
+        <div>
+          <p class="eyebrow">Bluetooth Tool</p>
+          <h1>BT05 Protocol Console</h1>
+          <p class="subtitle">
+            Auto-connects to any BT05 peripheral, streams every received byte, and sends raw or CSV hex payloads.
+          </p>
+        </div>
+        <div class="hero-actions">
+          <span id="adapterBadge" class="badge">Adapter unknown</span>
+          <span id="connectionBadge" class="badge">Idle</span>
+          <button id="rescanButton" class="secondary-button" type="button">Rescan</button>
+          <button id="disconnectButton" class="secondary-button" type="button">Disconnect</button>
+        </div>
+      </header>
+
+      <main class="main-grid">
+        <section class="panel console-panel">
+          <div class="panel-header">
+            <div>
+              <h2>Live Console</h2>
+              <p>RX/TX traffic is shown here with hex and ASCII side by side.</p>
+            </div>
+            <button id="clearConsoleButton" class="ghost-button" type="button">Clear</button>
+          </div>
+          <div id="consoleOutput" class="console-output" aria-live="polite"></div>
+        </section>
+
+        <section class="panel control-panel">
+          <div class="panel-header compact">
+            <div>
+              <h2>Device</h2>
+              <p>Current BLE UART details</p>
+            </div>
+          </div>
+          <dl class="status-grid">
+            <div>
+              <dt>Device</dt>
+              <dd id="deviceValue">No device selected</dd>
+            </div>
+            <div>
+              <dt>Notify Char</dt>
+              <dd id="notifyValue">—</dd>
+            </div>
+            <div>
+              <dt>Write Char</dt>
+              <dd id="writeValue">—</dd>
+            </div>
+          </dl>
+
+          <div class="send-grid">
+            <section class="subpanel">
+              <div class="subpanel-header">
+                <h3>Raw Bytes</h3>
+                <p>Enter hex bytes separated by spaces or commas.</p>
+              </div>
+              <textarea
+                id="rawBytesInput"
+                spellcheck="false"
+                placeholder="31 AA 00 7F"
+              ></textarea>
+              <button id="sendRawButton" class="primary-button" type="button">Send Raw Bytes</button>
+            </section>
+
+            <section class="subpanel">
+              <div class="subpanel-header">
+                <h3>CSV Hex Data</h3>
+                <p>Paste CSV bytes or load a file. Hex only: `31,AA,00,7F`.</p>
+              </div>
+              <div class="csv-toolbar">
+                <button id="loadCsvButton" class="secondary-button" type="button">Load CSV File</button>
+                <span id="csvFileLabel">No file loaded</span>
+              </div>
+              <div class="csv-settings-row">
+                <label class="csv-setting" for="csvRepeatCount">
+                  <span>Repeat Count</span>
+                  <input id="csvRepeatCount" type="number" min="0" step="1" value="1" />
+                </label>
+                <p class="csv-setting-hint">`0` loops until Stop Transfer. Any other value repeats that many times, then sends a silent audio packet.</p>
+              </div>
+              <textarea
+                id="csvBytesInput"
+                spellcheck="false"
+                placeholder="31,AA,00,7F&#10;10,20,30,40"
+              ></textarea>
+              <div class="transfer-actions">
+                <button id="sendCsvButton" class="primary-button" type="button">Send CSV Bytes</button>
+                <button id="stopTransferButton" class="secondary-button stop-button" type="button" disabled>Stop Transfer</button>
+              </div>
+            </section>
+          </div>
+        </section>
+      </main>
+
+      <footer class="status-bar">
+        <span id="statusLine" data-kind="info">Starting BT05 monitor…</span>
+      </footer>
+    </div>
+
+    <script src="./renderer.js"></script>
+  </body>
+</html>

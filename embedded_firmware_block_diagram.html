@@ -1,0 +1,478 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Embedded Firmware Block Diagram</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0f1218;
+        --panel: #171c24;
+        --panel-2: #1f2631;
+        --line: rgba(255, 255, 255, 0.08);
+        --text: #eef3fb;
+        --muted: #9eabc1;
+        --accent: #ffb347;
+        --transport: #7ec8ff;
+        --logic: #8fe3a7;
+        --peripheral: #ffd36e;
+        --interrupt: #ff8d8d;
+        --debug: #cfa8ff;
+        --shadow: 0 30px 80px rgba(0, 0, 0, 0.35);
+        --radius: 22px;
+        --font-ui: "Avenir Next", "Segoe UI", sans-serif;
+        --font-mono: "SFMono-Regular", "IBM Plex Mono", monospace;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: var(--font-ui);
+        color: var(--text);
+        background:
+          radial-gradient(circle at top left, rgba(255, 179, 71, 0.14), transparent 28%),
+          radial-gradient(circle at top right, rgba(126, 200, 255, 0.1), transparent 24%),
+          linear-gradient(180deg, #121722 0%, var(--bg) 100%);
+      }
+
+      .page {
+        width: min(1440px, calc(100vw - 32px));
+        margin: 0 auto;
+        padding: 24px 0 40px;
+      }
+
+      .hero,
+      .notes,
+      .diagram-shell {
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.01));
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow);
+      }
+
+      .hero {
+        padding: 24px 28px;
+        margin-bottom: 18px;
+      }
+
+      .eyebrow {
+        margin: 0 0 8px;
+        color: var(--accent);
+        text-transform: uppercase;
+        letter-spacing: 0.16em;
+        font-size: 0.8rem;
+      }
+
+      h1,
+      h2,
+      h3,
+      p,
+      ul {
+        margin: 0;
+      }
+
+      h1 {
+        font-size: clamp(2rem, 3vw, 3rem);
+        letter-spacing: -0.04em;
+        line-height: 0.95;
+      }
+
+      .subtitle {
+        margin-top: 10px;
+        color: var(--muted);
+        max-width: 920px;
+      }
+
+      .chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 18px;
+      }
+
+      .chip {
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 8px 12px;
+        background: rgba(255, 255, 255, 0.03);
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+
+      .chip strong {
+        color: var(--text);
+      }
+
+      .diagram-shell {
+        padding: 18px;
+        margin-bottom: 18px;
+      }
+
+      .diagram-title {
+        margin-bottom: 12px;
+      }
+
+      .diagram-title h2 {
+        font-size: 1.2rem;
+        margin-bottom: 6px;
+      }
+
+      .diagram-title p {
+        color: var(--muted);
+      }
+
+      svg {
+        display: block;
+        width: 100%;
+        height: auto;
+      }
+
+      .node {
+        height: 100%;
+        width: 100%;
+        border-radius: 20px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        padding: 14px 16px;
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02));
+        color: var(--text);
+      }
+
+      .node.transport {
+        background: linear-gradient(180deg, rgba(126, 200, 255, 0.16), rgba(126, 200, 255, 0.05));
+      }
+
+      .node.logic {
+        background: linear-gradient(180deg, rgba(143, 227, 167, 0.16), rgba(143, 227, 167, 0.05));
+      }
+
+      .node.peripheral {
+        background: linear-gradient(180deg, rgba(255, 211, 110, 0.18), rgba(255, 211, 110, 0.06));
+      }
+
+      .node.interrupt {
+        background: linear-gradient(180deg, rgba(255, 141, 141, 0.18), rgba(255, 141, 141, 0.06));
+      }
+
+      .node.debug {
+        background: linear-gradient(180deg, rgba(207, 168, 255, 0.17), rgba(207, 168, 255, 0.05));
+      }
+
+      .node h3 {
+        font-size: 1rem;
+        margin-bottom: 6px;
+        letter-spacing: -0.02em;
+      }
+
+      .node p,
+      .node li {
+        font-size: 0.82rem;
+        line-height: 1.34;
+        color: #e6edf8;
+      }
+
+      .node p.sub {
+        color: var(--muted);
+        margin-bottom: 8px;
+      }
+
+      .node ul {
+        padding-left: 18px;
+      }
+
+      .node code,
+      .notes code {
+        font-family: var(--font-mono);
+        font-size: 0.9em;
+        color: #ffffff;
+      }
+
+      .label {
+        font-family: var(--font-ui);
+        font-size: 14px;
+        fill: #dfe7f5;
+      }
+
+      .notes {
+        padding: 22px 24px;
+      }
+
+      .notes h2 {
+        font-size: 1.2rem;
+        margin-bottom: 14px;
+      }
+
+      .note-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 14px;
+      }
+
+      .note-card {
+        border-radius: 18px;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.03);
+        padding: 16px;
+      }
+
+      .note-card h3 {
+        font-size: 0.98rem;
+        margin-bottom: 6px;
+      }
+
+      .note-card p {
+        color: var(--muted);
+        font-size: 0.92rem;
+        line-height: 1.4;
+      }
+
+      .footer-note {
+        margin-top: 14px;
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+
+      @media (max-width: 900px) {
+        .page {
+          width: min(100%, calc(100vw - 20px));
+          padding-top: 12px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <section class="hero">
+        <p class="eyebrow">STM32 Firmware</p>
+        <h1>Embedded Code Block Diagram</h1>
+        <p class="subtitle">
+          High-level diagram of the current rover-side firmware flow in the STM32 codebase. This view is based on the
+          active structure in <code>main.c</code>, <code>at09_ble.c</code>, <code>audio_packet.c</code>, and
+          <code>sh1106.c</code>.
+        </p>
+        <div class="chips">
+          <span class="chip"><strong>Boot:</strong> HAL init, clocks, peripheral init, I2C scan</span>
+          <span class="chip"><strong>Transport:</strong> BT05 over USART1, debug over USART2</span>
+          <span class="chip"><strong>Display:</strong> SH1106 over I2C2</span>
+          <span class="chip"><strong>Audio:</strong> ADPCM decode, TIM6 ISR, DAC1 output</span>
+          <span class="chip"><strong>Touch:</strong> TSC baseline-on-boot and runtime polling</span>
+        </div>
+      </section>
+
+      <section class="diagram-shell">
+        <div class="diagram-title">
+          <h2>System Flow</h2>
+          <p>Arrows show the major runtime data paths between modules and peripherals.</p>
+        </div>
+
+        <svg viewBox="0 0 1360 950" role="img" aria-label="Block diagram of the embedded firmware architecture">
+          <defs>
+            <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="#dfe7f5"></path>
+            </marker>
+            <marker id="arrowSoft" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="#aab8ce"></path>
+            </marker>
+          </defs>
+
+          <path d="M 160 180 L 160 200 L 195 200 L 195 220" stroke="#dfe7f5" stroke-width="3" fill="none" marker-end="url(#arrow)" />
+          <text x="78" y="196" class="label">USART1 RX bytes</text>
+
+          <path d="M 680 170 L 680 235" stroke="#dfe7f5" stroke-width="3" fill="none" marker-end="url(#arrow)" />
+          <text x="694" y="210" class="label">boot enters loop</text>
+
+          <path d="M 900 320 L 1010 320" stroke="#dfe7f5" stroke-width="3" fill="none" marker-end="url(#arrow)" />
+          <text x="930" y="308" class="label">frame flush / eye draw</text>
+
+          <path d="M 1160 220 L 1160 180" stroke="#dfe7f5" stroke-width="3" fill="none" marker-end="url(#arrow)" />
+          <text x="1174" y="206" class="label">I2C2 writes</text>
+
+          <path d="M 900 450 L 1010 450" stroke="#dfe7f5" stroke-width="3" fill="none" marker-end="url(#arrow)" />
+          <text x="922" y="438" class="label">audio packets / refill</text>
+
+          <path d="M 1160 690 L 1160 720" stroke="#dfe7f5" stroke-width="3" fill="none" marker-end="url(#arrow)" />
+          <text x="1174" y="708" class="label">TIM6 ISR to DAC1</text>
+
+          <path d="M 680 515 L 680 600" stroke="#dfe7f5" stroke-width="3" fill="none" marker-end="url(#arrow)" />
+          <text x="694" y="563" class="label">poll touch</text>
+
+          <path d="M 520 690 L 430 690 L 430 505 L 460 505" stroke="#dfe7f5" stroke-width="3" fill="none" marker-end="url(#arrow)" />
+          <text x="308" y="668" class="label">events / 0x31 / status</text>
+
+          <path d="M 360 370 L 460 370" stroke="#dfe7f5" stroke-width="3" fill="none" marker-end="url(#arrow)" />
+          <text x="372" y="358" class="label">raw cmds + framed bytes</text>
+
+          <path d="M 280 220 L 280 180" stroke="#dfe7f5" stroke-width="3" fill="none" marker-end="url(#arrow)" />
+          <text x="292" y="204" class="label">AT09_SendBytes</text>
+
+          <path d="M 210 520 L 210 700" stroke="#aab8ce" stroke-width="2.5" fill="none" stroke-dasharray="8 8" marker-end="url(#arrowSoft)" />
+          <text x="224" y="616" class="label">USART2 mirror / logs</text>
+
+          <foreignObject x="30" y="40" width="260" height="140">
+            <div xmlns="http://www.w3.org/1999/xhtml" class="node peripheral">
+              <h3>BT05 BLE Module</h3>
+              <p class="sub">External peripheral on USART1</p>
+              <ul>
+                <li>Receives framed commands, status, face and touch events</li>
+                <li>Sends raw bytes, video frames and audio packets</li>
+              </ul>
+            </div>
+          </foreignObject>
+
+          <foreignObject x="410" y="30" width="540" height="140">
+            <div xmlns="http://www.w3.org/1999/xhtml" class="node logic">
+              <h3>Boot + Initialization in <code>main.c</code></h3>
+              <p class="sub">One-time setup before entering the infinite loop</p>
+              <ul>
+                <li><code>HAL_Init()</code>, clock setup, <code>MX_*</code> peripheral init</li>
+                <li>I2C bus scan reported over <code>USART2</code></li>
+                <li><code>SH1106_Init()</code>, <code>AT09_Init(&huart1)</code>, <code>Touch_InitBaseline()</code>, <code>Audio_Init()</code></li>
+                <li>Default face state set, fake audio prefilled, playback started</li>
+              </ul>
+            </div>
+          </foreignObject>
+
+          <foreignObject x="1010" y="30" width="290" height="150">
+            <div xmlns="http://www.w3.org/1999/xhtml" class="node peripheral">
+              <h3>SH1106 OLED</h3>
+              <p class="sub">External display on I2C2</p>
+              <ul>
+                <li>Raw 128x64 monochrome frame path</li>
+                <li>Also updated by local face drawing primitives</li>
+              </ul>
+            </div>
+          </foreignObject>
+
+          <foreignObject x="30" y="220" width="330" height="300">
+            <div xmlns="http://www.w3.org/1999/xhtml" class="node transport">
+              <h3><code>at09_ble.c</code> Transport + RX State Machine</h3>
+              <p class="sub">Interrupt-driven single-byte UART receive path</p>
+              <ul>
+                <li><code>AT09_UART_RxCpltCallback()</code> re-arms UART1 byte reception</li>
+                <li>Classifies <code>0x02</code> video frames, <code>0xAA</code> audio packets, and raw command bytes</li>
+                <li>Exports <code>at09_frame_ready</code>, <code>at09_audio_pkt_ready</code>, and command buffer data</li>
+                <li>Mirrors every received UART1 byte to <code>USART2</code></li>
+              </ul>
+            </div>
+          </foreignObject>
+
+          <foreignObject x="460" y="235" width="440" height="280">
+            <div xmlns="http://www.w3.org/1999/xhtml" class="node logic">
+              <h3>Main Loop Orchestrator in <code>main.c</code></h3>
+              <p class="sub">Central control slice that coordinates the firmware subsystems</p>
+              <ul>
+                <li>Checks frame and audio ready flags after <code>AT09_CheckFrameTimeout()</code></li>
+                <li>Switches from fake audio to real BLE audio on first received packet</li>
+                <li>Keeps audio alive with <code>Audio_FeedFakeData()</code> or <code>Audio_FeedLastPacket()</code></li>
+                <li>Calls <code>Touch_Process()</code> every loop</li>
+                <li>Consumes command bytes, parses framed protocol, and handles legacy <code>'1'</code>/<code>'0'</code> face commands</li>
+              </ul>
+            </div>
+          </foreignObject>
+
+          <foreignObject x="1010" y="220" width="300" height="200">
+            <div xmlns="http://www.w3.org/1999/xhtml" class="node logic">
+              <h3>Display Path</h3>
+              <p class="sub"><code>main.c</code> + <code>sh1106.c</code></p>
+              <ul>
+                <li><code>SH1106_SetBufferAndFlush()</code> renders incoming raw video frames</li>
+                <li><code>DrawFace()</code> draws the local eyes-only face state</li>
+                <li><code>SetFaceState()</code> triggers display updates and outbound face events</li>
+              </ul>
+            </div>
+          </foreignObject>
+
+          <foreignObject x="1010" y="450" width="300" height="240">
+            <div xmlns="http://www.w3.org/1999/xhtml" class="node interrupt">
+              <h3><code>audio_packet.c</code> Audio Pipeline</h3>
+              <p class="sub">Packet decode, buffering, looping and timed output</p>
+              <ul>
+                <li><code>Audio_ProcessPacket()</code> validates checksum and decodes IMA ADPCM</li>
+                <li>Decoded samples are pushed into a ring buffer</li>
+                <li>Last valid packet is cached and replayed if the stream stalls</li>
+                <li><code>TIM6_IRQHandler()</code> drains the ring buffer into <code>DAC1</code> at 8 kHz</li>
+              </ul>
+            </div>
+          </foreignObject>
+
+          <foreignObject x="1020" y="720" width="280" height="140">
+            <div xmlns="http://www.w3.org/1999/xhtml" class="node peripheral">
+              <h3>DAC1 + Audio Output</h3>
+              <p class="sub">Timer-driven analog output path</p>
+              <ul>
+                <li>8 kHz sample cadence from TIM6</li>
+                <li>Silence if the ring buffer underruns</li>
+              </ul>
+            </div>
+          </foreignObject>
+
+          <foreignObject x="520" y="600" width="320" height="180">
+            <div xmlns="http://www.w3.org/1999/xhtml" class="node logic">
+              <h3>Touch Sensing</h3>
+              <p class="sub"><code>Touch_InitBaseline()</code> + <code>Touch_Process()</code></p>
+              <ul>
+                <li>Baseline captured once during boot</li>
+                <li>Runtime loop polls TSC raw value and computes delta / thresholds</li>
+                <li>On touch edge: sends <code>0x31</code> over BLE and publishes touch-state event</li>
+              </ul>
+            </div>
+          </foreignObject>
+
+          <foreignObject x="40" y="700" width="340" height="160">
+            <div xmlns="http://www.w3.org/1999/xhtml" class="node debug">
+              <h3>USART2 Debug / Observability</h3>
+              <p class="sub">Secondary serial output path</p>
+              <ul>
+                <li>I2C scan messages at boot</li>
+                <li>Mirrored UART1 RX bytes from the BLE transport callback</li>
+                <li>Live-expression debug structs for touch and UART state</li>
+              </ul>
+            </div>
+          </foreignObject>
+        </svg>
+      </section>
+
+      <section class="notes">
+        <h2>Module Notes</h2>
+        <div class="note-grid">
+          <article class="note-card">
+            <h3><code>Core/Src/main.c</code></h3>
+            <p>
+              Owns boot sequencing, the infinite loop, face state, touch handling, framed BLE protocol parsing, and the
+              handoff between transport, display, and audio subsystems.
+            </p>
+          </article>
+          <article class="note-card">
+            <h3><code>Core/Src/at09_ble.c</code></h3>
+            <p>
+              Converts a single-byte UART interrupt stream into higher-level buffers for raw commands, full video frames,
+              and fixed-size audio packets, while also mirroring traffic to <code>USART2</code>.
+            </p>
+          </article>
+          <article class="note-card">
+            <h3><code>Core/Src/audio_packet.c</code></h3>
+            <p>
+              Validates incoming audio packets, decodes ADPCM into PCM samples, stores them in a ring buffer, and feeds
+              the DAC from the TIM6 interrupt. It also loops the last packet when no new audio arrives.
+            </p>
+          </article>
+          <article class="note-card">
+            <h3><code>Core/Src/sh1106.c</code></h3>
+            <p>
+              Owns the display RAM buffer and converts drawing operations or raw frame writes into SH1106 I2C transfers
+              over <code>I2C2</code>.
+            </p>
+          </article>
+        </div>
+        <p class="footer-note">
+          This HTML file is a high-level architecture aid, not a generated source-of-truth artifact. If the firmware
+          structure changes, the diagram should be updated to match.
+        </p>
+      </section>
+    </main>
+  </body>
+</html>
