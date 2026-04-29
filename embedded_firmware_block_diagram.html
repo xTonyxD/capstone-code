@@ -269,7 +269,7 @@
           <p>Arrows show the major runtime data paths between modules and peripherals.</p>
         </div>
 
-        <svg viewBox="0 0 1360 950" role="img" aria-label="Block diagram of the embedded firmware architecture">
+        <svg viewBox="0 0 1420 1040" role="img" aria-label="Block diagram of the embedded firmware architecture">
           <defs>
             <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
               <path d="M 0 0 L 10 5 L 0 10 z" fill="#dfe7f5"></path>
@@ -279,38 +279,38 @@
             </marker>
           </defs>
 
-          <path d="M 160 180 L 160 200 L 195 200 L 195 220" stroke="#dfe7f5" stroke-width="3" fill="none" marker-end="url(#arrow)" />
-          <text x="78" y="196" class="label">USART1 RX bytes</text>
+          <path d="M 160 180 L 160 220 L 200 220 L 200 260" stroke="#dfe7f5" stroke-width="3" fill="none" marker-end="url(#arrow)" />
+          <text x="76" y="214" class="label">USART1 RX bytes</text>
 
-          <path d="M 680 170 L 680 235" stroke="#dfe7f5" stroke-width="3" fill="none" marker-end="url(#arrow)" />
-          <text x="694" y="210" class="label">boot enters loop</text>
+          <path d="M 690 170 L 690 270" stroke="#dfe7f5" stroke-width="3" fill="none" marker-end="url(#arrow)" />
+          <text x="704" y="223" class="label">boot enters loop</text>
 
-          <path d="M 900 320 L 1010 320" stroke="#dfe7f5" stroke-width="3" fill="none" marker-end="url(#arrow)" />
-          <text x="930" y="308" class="label">frame flush / eye draw</text>
+          <path d="M 930 365 L 1110 365" stroke="#dfe7f5" stroke-width="3" fill="none" marker-end="url(#arrow)" />
+          <text x="966" y="353" class="label">frame flush / eye draw</text>
 
-          <path d="M 1160 220 L 1160 180" stroke="#dfe7f5" stroke-width="3" fill="none" marker-end="url(#arrow)" />
-          <text x="1174" y="206" class="label">I2C2 writes</text>
+          <path d="M 1250 260 L 1250 180" stroke="#dfe7f5" stroke-width="3" fill="none" marker-end="url(#arrow)" />
+          <text x="1264" y="220" class="label">I2C2 writes</text>
 
-          <path d="M 900 450 L 1010 450" stroke="#dfe7f5" stroke-width="3" fill="none" marker-end="url(#arrow)" />
-          <text x="922" y="438" class="label">audio packets / refill</text>
+          <path d="M 930 560 L 1110 560" stroke="#dfe7f5" stroke-width="3" fill="none" marker-end="url(#arrow)" />
+          <text x="956" y="548" class="label">audio packets / refill</text>
 
-          <path d="M 1160 690 L 1160 720" stroke="#dfe7f5" stroke-width="3" fill="none" marker-end="url(#arrow)" />
-          <text x="1174" y="708" class="label">TIM6 ISR to DAC1</text>
+          <path d="M 1250 780 L 1250 860" stroke="#dfe7f5" stroke-width="3" fill="none" marker-end="url(#arrow)" />
+          <text x="1264" y="822" class="label">TIM6 ISR to DAC1</text>
 
-          <path d="M 680 515 L 680 600" stroke="#dfe7f5" stroke-width="3" fill="none" marker-end="url(#arrow)" />
-          <text x="694" y="563" class="label">poll touch</text>
+          <path d="M 715 560 L 715 680" stroke="#dfe7f5" stroke-width="3" fill="none" marker-end="url(#arrow)" />
+          <text x="729" y="626" class="label">poll touch</text>
 
-          <path d="M 520 690 L 430 690 L 430 505 L 460 505" stroke="#dfe7f5" stroke-width="3" fill="none" marker-end="url(#arrow)" />
-          <text x="308" y="668" class="label">events / 0x31 / status</text>
+          <path d="M 540 775 L 450 775 L 450 520 L 500 520" stroke="#dfe7f5" stroke-width="3" fill="none" marker-end="url(#arrow)" />
+          <text x="314" y="753" class="label">events / 0x31 / status</text>
 
-          <path d="M 360 370 L 460 370" stroke="#dfe7f5" stroke-width="3" fill="none" marker-end="url(#arrow)" />
-          <text x="372" y="358" class="label">raw cmds + framed bytes</text>
+          <path d="M 370 390 L 500 390" stroke="#dfe7f5" stroke-width="3" fill="none" marker-end="url(#arrow)" />
+          <text x="392" y="378" class="label">raw cmds + framed bytes</text>
 
-          <path d="M 280 220 L 280 180" stroke="#dfe7f5" stroke-width="3" fill="none" marker-end="url(#arrow)" />
-          <text x="292" y="204" class="label">AT09_SendBytes</text>
+          <path d="M 290 260 L 290 180" stroke="#dfe7f5" stroke-width="3" fill="none" marker-end="url(#arrow)" />
+          <text x="304" y="216" class="label">AT09_SendBytes</text>
 
-          <path d="M 210 520 L 210 700" stroke="#aab8ce" stroke-width="2.5" fill="none" stroke-dasharray="8 8" marker-end="url(#arrowSoft)" />
-          <text x="224" y="616" class="label">USART2 mirror / logs</text>
+          <path d="M 210 560 L 210 840" stroke="#aab8ce" stroke-width="2.5" fill="none" stroke-dasharray="8 8" marker-end="url(#arrowSoft)" />
+          <text x="224" y="706" class="label">USART2 mirror / logs</text>
 
           <foreignObject x="30" y="40" width="260" height="140">
             <div xmlns="http://www.w3.org/1999/xhtml" class="node peripheral">
@@ -323,7 +323,7 @@
             </div>
           </foreignObject>
 
-          <foreignObject x="410" y="30" width="540" height="140">
+          <foreignObject x="420" y="30" width="540" height="140">
             <div xmlns="http://www.w3.org/1999/xhtml" class="node logic">
               <h3>Boot + Initialization in <code>main.c</code></h3>
               <p class="sub">One-time setup before entering the infinite loop</p>
@@ -336,7 +336,7 @@
             </div>
           </foreignObject>
 
-          <foreignObject x="1010" y="30" width="290" height="150">
+          <foreignObject x="1110" y="30" width="280" height="150">
             <div xmlns="http://www.w3.org/1999/xhtml" class="node peripheral">
               <h3>SH1106 OLED</h3>
               <p class="sub">External display on I2C2</p>
@@ -347,7 +347,7 @@
             </div>
           </foreignObject>
 
-          <foreignObject x="30" y="220" width="330" height="300">
+          <foreignObject x="30" y="260" width="340" height="300">
             <div xmlns="http://www.w3.org/1999/xhtml" class="node transport">
               <h3><code>at09_ble.c</code> Transport + RX State Machine</h3>
               <p class="sub">Interrupt-driven single-byte UART receive path</p>
@@ -360,7 +360,7 @@
             </div>
           </foreignObject>
 
-          <foreignObject x="460" y="235" width="440" height="280">
+          <foreignObject x="500" y="270" width="430" height="290">
             <div xmlns="http://www.w3.org/1999/xhtml" class="node logic">
               <h3>Main Loop Orchestrator in <code>main.c</code></h3>
               <p class="sub">Central control slice that coordinates the firmware subsystems</p>
@@ -374,7 +374,7 @@
             </div>
           </foreignObject>
 
-          <foreignObject x="1010" y="220" width="300" height="200">
+          <foreignObject x="1110" y="260" width="280" height="210">
             <div xmlns="http://www.w3.org/1999/xhtml" class="node logic">
               <h3>Display Path</h3>
               <p class="sub"><code>main.c</code> + <code>sh1106.c</code></p>
@@ -386,7 +386,7 @@
             </div>
           </foreignObject>
 
-          <foreignObject x="1010" y="450" width="300" height="240">
+          <foreignObject x="1110" y="540" width="280" height="240">
             <div xmlns="http://www.w3.org/1999/xhtml" class="node interrupt">
               <h3><code>audio_packet.c</code> Audio Pipeline</h3>
               <p class="sub">Packet decode, buffering, looping and timed output</p>
@@ -399,7 +399,7 @@
             </div>
           </foreignObject>
 
-          <foreignObject x="1020" y="720" width="280" height="140">
+          <foreignObject x="1115" y="860" width="270" height="140">
             <div xmlns="http://www.w3.org/1999/xhtml" class="node peripheral">
               <h3>DAC1 + Audio Output</h3>
               <p class="sub">Timer-driven analog output path</p>
@@ -410,7 +410,7 @@
             </div>
           </foreignObject>
 
-          <foreignObject x="520" y="600" width="320" height="180">
+          <foreignObject x="540" y="680" width="320" height="190">
             <div xmlns="http://www.w3.org/1999/xhtml" class="node logic">
               <h3>Touch Sensing</h3>
               <p class="sub"><code>Touch_InitBaseline()</code> + <code>Touch_Process()</code></p>
@@ -422,7 +422,7 @@
             </div>
           </foreignObject>
 
-          <foreignObject x="40" y="700" width="340" height="160">
+          <foreignObject x="40" y="840" width="350" height="160">
             <div xmlns="http://www.w3.org/1999/xhtml" class="node debug">
               <h3>USART2 Debug / Observability</h3>
               <p class="sub">Secondary serial output path</p>
