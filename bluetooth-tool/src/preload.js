@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('bt05Api', {
   getStatus: () => ipcRenderer.invoke('ble:get-status'),
   pickCsvFile: () => ipcRenderer.invoke('ble:pick-csv'),
   sendBytes: (bytes, label, options) => ipcRenderer.invoke('ble:send-bytes', bytes, label, options),
+  configureModuleBaud: (baudRate) => ipcRenderer.invoke('ble:configure-module-baud', baudRate),
   stopTransfer: () => ipcRenderer.invoke('ble:stop-transfer'),
   rescan: () => ipcRenderer.invoke('ble:rescan'),
   disconnect: () => ipcRenderer.invoke('ble:disconnect'),

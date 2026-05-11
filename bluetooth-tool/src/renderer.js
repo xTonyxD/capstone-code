@@ -1,6 +1,7 @@
 const state = {
   logCount: 0,
   csvTransferActive: false,
+  bt05ConfigActive: false,
 };
 
 function formatTime(timestamp) {
@@ -63,6 +64,12 @@ function setCsvTransferActive(active) {
   document.querySelector('#csvRepeatCount').disabled = active;
 }
 
+function setBt05ConfigActive(active) {
+  state.bt05ConfigActive = active;
+  document.querySelector('#moduleBaudSelect').disabled = active;
+  document.querySelector('#setModuleBaudButton').disabled = active;
+}
+
 function setStatusMessage(message, kind = 'info') {
   const statusLine = document.querySelector('#statusLine');
   statusLine.textContent = message;
@@ -73,6 +80,7 @@ function updateConnectionStatus(status) {
   const connectionBadge = document.querySelector('#connectionBadge');
   const adapterBadge = document.querySelector('#adapterBadge');
   const deviceValue = document.querySelector('#deviceValue');
+  const moduleBaudValue = document.querySelector('#moduleBaudValue');
   const notifyValue = document.querySelector('#notifyValue');
   const writeValue = document.querySelector('#writeValue');
 
@@ -96,6 +104,7 @@ function updateConnectionStatus(status) {
   deviceValue.textContent = status.deviceName
     ? `${status.deviceName}${status.deviceId ? ` (${status.deviceId})` : ''}`
     : 'No device selected';
+  moduleBaudValue.textContent = status.moduleUartBaudRate ? String(status.moduleUartBaudRate) : '9600';
   notifyValue.textContent = status.notifyUuid || '—';
   writeValue.textContent = status.writeUuid || '—';
 }
@@ -206,6 +215,20 @@ async function handleCsvFileLoad() {
   setStatusMessage(`Loaded ${basename(file.fileName || file.filePath)}.`);
 }
 
+async function handleModuleBaudChange() {
+  const baudRate = Number.parseInt(document.querySelector('#moduleBaudSelect').value, 10);
+
+  setBt05ConfigActive(true);
+  setStatusMessage(`Requesting BT05 UART baud change to ${baudRate}...`);
+
+  try {
+    const result = await window.bt05Api.configureModuleBaud(baudRate);
+    setStatusMessage(result.message, result.success ? 'info' : 'error');
+  } finally {
+    setBt05ConfigActive(false);
+  }
+}
+
 async function refreshStatus() {
   const status = await window.bt05Api.getStatus();
   updateConnectionStatus(status);
@@ -270,11 +293,21 @@ function wireActions() {
       setStatusMessage(error.message, 'error');
     }
   });
+
+  document.querySelector('#setModuleBaudButton').addEventListener('click', async () => {
+    try {
+      await handleModuleBaudChange();
+    } catch (error) {
+      setStatusMessage(error.message, 'error');
+      setBt05ConfigActive(false);
+    }
+  });
 }
 
 window.addEventListener('DOMContentLoaded', async () => {
   wireActions();
   setCsvTransferActive(false);
+  setBt05ConfigActive(false);
 
   window.bt05Api.onStatus((status) => {
     updateConnectionStatus(status);

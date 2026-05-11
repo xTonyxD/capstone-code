@@ -49,6 +49,10 @@
               <dd id="deviceValue">No device selected</dd>
             </div>
             <div>
+              <dt>Module UART Baud</dt>
+              <dd id="moduleBaudValue">9600</dd>
+            </div>
+            <div>
               <dt>Notify Char</dt>
               <dd id="notifyValue">—</dd>
             </div>
@@ -57,6 +61,28 @@
               <dd id="writeValue">—</dd>
             </div>
           </dl>
+
+          <section class="subpanel compact-subpanel">
+            <div class="subpanel-header">
+              <h3>BT05 UART Config</h3>
+              <p>Ask the STM32 to reprogram the local BT05 module UART baud.</p>
+            </div>
+            <div class="module-config-row">
+              <label class="csv-setting" for="moduleBaudSelect">
+                <span>Target Baud</span>
+                <select id="moduleBaudSelect">
+                  <option value="9600">9600</option>
+                  <option value="19200">19200</option>
+                  <option value="38400">38400</option>
+                  <option value="57600">57600</option>
+                  <option value="115200" selected>115200</option>
+                  <option value="230400">230400</option>
+                </select>
+              </label>
+              <button id="setModuleBaudButton" class="secondary-button" type="button">Set Module Baud</button>
+            </div>
+            <p class="module-config-hint">Uses the common BT05 or AT-09 baud presets. If the module ignores AT commands while connected, this request may time out.</p>
+          </section>
 
           <div class="send-grid">
             <section class="subpanel">

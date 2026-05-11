@@ -71,6 +71,11 @@ typedef struct {
   uint8_t payload[16];
 } BT_ProtocolParser_t;
 
+typedef struct {
+  uint32_t baud_rate;
+  const char *at_command;
+} BT05_BaudSetting_t;
+
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -89,10 +94,19 @@ typedef struct {
 #define BT_PROTO_CMD_SET_FACE           0x01U
 #define BT_PROTO_CMD_GET_STATUS         0x02U
 #define BT_PROTO_CMD_PING               0x03U
+#define BT_PROTO_CMD_SET_BT05_BAUD      0x04U
 #define BT_PROTO_EVT_TOUCH_STATE        0x81U
 #define BT_PROTO_EVT_FACE_STATE         0x82U
 #define BT_PROTO_EVT_STATUS             0x83U
 #define BT_PROTO_EVT_PONG               0x84U
+#define BT_PROTO_EVT_BT05_BAUD_RESULT   0x85U
+
+#define BT05_BAUD_STATUS_OK             0U
+#define BT05_BAUD_STATUS_UNSUPPORTED    1U
+#define BT05_BAUD_STATUS_LINK_DOWN      2U
+#define BT05_BAUD_STATUS_COMMAND_FAIL   3U
+#define BT05_BAUD_STATUS_UART_REINIT    4U
+#define BT05_BAUD_STATUS_VERIFY_FAIL    5U
 
 /* USER CODE END PD */
 
@@ -148,6 +162,11 @@ static void BT_ProtocolSendFaceState(bool happy);
 static void BT_ProtocolSendTouchState(bool active);
 static void BT_ProtocolSendStatus(void);
 static void BT_ProtocolSendPong(void);
+static void BT_ProtocolSendBt05BaudResult(uint8_t status, uint32_t baud_rate);
+static uint32_t BT_ProtocolReadU32LE(const uint8_t *src);
+static const BT05_BaudSetting_t *BT05_FindBaudSetting(uint32_t baud_rate);
+static bool BT05_ReconfigureLocalUart(uint32_t baud_rate);
+static uint8_t BT05_ConfigureBaud(uint32_t baud_rate);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -224,6 +243,103 @@ static void BT_ProtocolWriteU32LE(uint8_t *dst, uint32_t value) {
   dst[3] = (uint8_t)((value >> 24) & 0xFFU);
 }
 
+static uint32_t BT_ProtocolReadU32LE(const uint8_t *src) {
+  return ((uint32_t)src[0]) |
+         ((uint32_t)src[1] << 8) |
+         ((uint32_t)src[2] << 16) |
+         ((uint32_t)src[3] << 24);
+}
+
+static const BT05_BaudSetting_t *BT05_FindBaudSetting(uint32_t baud_rate) {
+  static const BT05_BaudSetting_t settings[] = {
+    { 9600U,   "AT+BAUD0" },
+    { 19200U,  "AT+BAUD1" },
+    { 38400U,  "AT+BAUD2" },
+    { 57600U,  "AT+BAUD3" },
+    { 115200U, "AT+BAUD4" },
+    { 230400U, "AT+BAUD8" },
+  };
+
+  for (uint32_t i = 0; i < (sizeof(settings) / sizeof(settings[0])); i++) {
+    if (settings[i].baud_rate == baud_rate) {
+      return &settings[i];
+    }
+  }
+
+  return NULL;
+}
+
+static bool BT05_ReconfigureLocalUart(uint32_t baud_rate) {
+  if (HAL_UART_Abort(&huart1) != HAL_OK) {
+    return false;
+  }
+
+  if (HAL_UART_DeInit(&huart1) != HAL_OK) {
+    return false;
+  }
+
+  huart1.Init.BaudRate = baud_rate;
+
+  if (HAL_UART_Init(&huart1) != HAL_OK) {
+    return false;
+  }
+
+  if (HAL_UARTEx_SetTxFifoThreshold(&huart1, UART_TXFIFO_THRESHOLD_1_8) != HAL_OK) {
+    return false;
+  }
+
+  if (HAL_UARTEx_SetRxFifoThreshold(&huart1, UART_RXFIFO_THRESHOLD_1_8) != HAL_OK) {
+    return false;
+  }
+
+  if (HAL_UARTEx_DisableFifoMode(&huart1) != HAL_OK) {
+    return false;
+  }
+
+  AT09_Init(&huart1);
+  return true;
+}
+
+static uint8_t BT05_ConfigureBaud(uint32_t baud_rate) {
+  char response[32];
+  uint32_t previous_baud = huart1.Init.BaudRate;
+  const BT05_BaudSetting_t *setting = BT05_FindBaudSetting(baud_rate);
+
+  if (setting == NULL) {
+    return BT05_BAUD_STATUS_UNSUPPORTED;
+  }
+
+  if (!AT09_SendCommand("AT", response, sizeof(response), 250U)) {
+    return BT05_BAUD_STATUS_LINK_DOWN;
+  }
+
+  if (!AT09_SendCommand(setting->at_command, response, sizeof(response), 300U)) {
+    return BT05_BAUD_STATUS_COMMAND_FAIL;
+  }
+
+  HAL_Delay(60U);
+
+  if (!BT05_ReconfigureLocalUart(baud_rate)) {
+    BT05_ReconfigureLocalUart(previous_baud);
+    return BT05_BAUD_STATUS_UART_REINIT;
+  }
+
+  for (uint32_t attempt = 0; attempt < 3U; attempt++) {
+    HAL_Delay(40U);
+    if (AT09_SendCommand("AT", response, sizeof(response), 250U)) {
+      return BT05_BAUD_STATUS_OK;
+    }
+  }
+
+  if (BT05_ReconfigureLocalUart(previous_baud)) {
+    if (AT09_SendCommand("AT", response, sizeof(response), 250U)) {
+      return BT05_BAUD_STATUS_VERIFY_FAIL;
+    }
+  }
+
+  return BT05_BAUD_STATUS_VERIFY_FAIL;
+}
+
 static void BT_ProtocolResetParser(void) {
   bt_protocol_parser.state = BT_PROTO_WAIT_SYNC0;
   bt_protocol_parser.type = 0U;
@@ -288,6 +404,14 @@ static void BT_ProtocolSendPong(void) {
   BT_ProtocolSendFrame(BT_PROTO_EVT_PONG, payload, sizeof(payload));
 }
 
+static void BT_ProtocolSendBt05BaudResult(uint8_t status, uint32_t baud_rate) {
+  uint8_t payload[5];
+
+  payload[0] = status;
+  BT_ProtocolWriteU32LE(&payload[1], baud_rate);
+  BT_ProtocolSendFrame(BT_PROTO_EVT_BT05_BAUD_RESULT, payload, sizeof(payload));
+}
+
 static void BT_ProtocolHandleFrame(uint8_t type, const uint8_t *payload, uint8_t length) {
   switch (type) {
     case BT_PROTO_CMD_SET_FACE:
@@ -302,6 +426,14 @@ static void BT_ProtocolHandleFrame(uint8_t type, const uint8_t *payload, uint8_t
 
     case BT_PROTO_CMD_PING:
       BT_ProtocolSendPong();
+      break;
+
+    case BT_PROTO_CMD_SET_BT05_BAUD:
+      if (length >= 4U) {
+        uint32_t requested_baud = BT_ProtocolReadU32LE(payload);
+        uint8_t result = BT05_ConfigureBaud(requested_baud);
+        BT_ProtocolSendBt05BaudResult(result, requested_baud);
+      }
       break;
 
     default:

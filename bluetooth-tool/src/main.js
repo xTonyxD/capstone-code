@@ -11,9 +11,23 @@ const BLUETOOTH_BASE_UUID_SUFFIX = '00001000800000805f9b34fb';
 const AUDIO_PKT_START_BYTE = 0xAA;
 const AUDIO_PKT_TOTAL_SIZE = 109;
 const AUDIO_PKT_PAYLOAD_LEN = 106;
-const BT05_UART_BAUD_RATE = 9600;
+const DEFAULT_BT05_UART_BAUD_RATE = 9600;
 const UART_FRAME_BITS = 10;
 const UART_DRAIN_MARGIN_MS = 2;
+const BT_PROTOCOL_SYNC0 = 0xA5;
+const BT_PROTOCOL_SYNC1 = 0x5A;
+const BT_PROTOCOL_MAX_PAYLOAD = 16;
+const BT_PROTO_CMD_SET_BT05_BAUD = 0x04;
+const BT_PROTO_EVT_BT05_BAUD_RESULT = 0x85;
+const BT05_BAUD_RESULT_TIMEOUT_MS = 5000;
+const BT05_BAUD_STATUS_MESSAGES = {
+  0: 'BT05 UART baud updated successfully.',
+  1: 'STM rejected the requested baud rate.',
+  2: 'STM could not talk to the BT05 module at the current baud.',
+  3: 'BT05 did not accept the baud-change AT command.',
+  4: 'STM failed to reinitialize USART1 at the requested baud.',
+  5: 'STM could not verify the new baud after reconfiguration.',
+};
 
 const UART_CANDIDATES = [
   {
@@ -56,6 +70,17 @@ const transferState = {
   active: false,
   stopRequested: false,
 };
+
+const protocolState = {
+  state: 0,
+  type: 0,
+  length: 0,
+  index: 0,
+  payload: Buffer.alloc(BT_PROTOCOL_MAX_PAYLOAD),
+};
+
+let currentBt05ModuleBaudRate = DEFAULT_BT05_UART_BAUD_RATE;
+let pendingBt05BaudRequest = null;
 
 function normalizeUuid(uuid) {
   return String(uuid || '').replace(/-/g, '').toLowerCase();
@@ -129,7 +154,143 @@ function buildEmptyAudioPacket() {
 }
 
 function getChunkDrainDelayMs(byteCount) {
-  return Math.ceil((byteCount * UART_FRAME_BITS * 1000) / BT05_UART_BAUD_RATE) + UART_DRAIN_MARGIN_MS;
+  return Math.ceil((byteCount * UART_FRAME_BITS * 1000) / currentBt05ModuleBaudRate) + UART_DRAIN_MARGIN_MS;
+}
+
+function resetProtocolParser() {
+  protocolState.state = 0;
+  protocolState.type = 0;
+  protocolState.length = 0;
+  protocolState.index = 0;
+}
+
+function buildProtocolFrame(type, payload = Buffer.alloc(0)) {
+  if (payload.length > BT_PROTOCOL_MAX_PAYLOAD) {
+    throw new Error(`Protocol payload too large: ${payload.length}`);
+  }
+
+  const frame = Buffer.alloc(5 + payload.length);
+  let checksum = type ^ payload.length;
+
+  frame[0] = BT_PROTOCOL_SYNC0;
+  frame[1] = BT_PROTOCOL_SYNC1;
+  frame[2] = type;
+  frame[3] = payload.length;
+
+  for (let i = 0; i < payload.length; i += 1) {
+    frame[4 + i] = payload[i];
+    checksum ^= payload[i];
+  }
+
+  frame[4 + payload.length] = checksum & 0xFF;
+  return frame;
+}
+
+function readU32LE(buffer, offset = 0) {
+  return (
+    buffer[offset] |
+    (buffer[offset + 1] << 8) |
+    (buffer[offset + 2] << 16) |
+    (buffer[offset + 3] << 24)
+  ) >>> 0;
+}
+
+function finalizeBt05BaudRequest(result) {
+  if (!pendingBt05BaudRequest) {
+    return;
+  }
+
+  clearTimeout(pendingBt05BaudRequest.timeoutId);
+  pendingBt05BaudRequest.resolve(result);
+  pendingBt05BaudRequest = null;
+}
+
+function failBt05BaudRequest(error) {
+  if (!pendingBt05BaudRequest) {
+    return;
+  }
+
+  clearTimeout(pendingBt05BaudRequest.timeoutId);
+  pendingBt05BaudRequest.reject(error);
+  pendingBt05BaudRequest = null;
+}
+
+function handleProtocolFrame(type, payload) {
+  if (type !== BT_PROTO_EVT_BT05_BAUD_RESULT || payload.length < 5) {
+    return;
+  }
+
+  const status = payload[0];
+  const baudRate = readU32LE(payload, 1);
+  const success = status === 0;
+  const message = BT05_BAUD_STATUS_MESSAGES[status] || `BT05 baud request returned status ${status}.`;
+
+  if (success) {
+    currentBt05ModuleBaudRate = baudRate;
+    publishStatus();
+  }
+
+  logSystem(success ? 'system' : 'error', `${message} Target baud: ${baudRate}.`);
+  finalizeBt05BaudRequest({ success, status, baudRate, message: `${message} Target baud: ${baudRate}.` });
+}
+
+function processProtocolByte(byte) {
+  switch (protocolState.state) {
+    case 0:
+      if (byte === BT_PROTOCOL_SYNC0) {
+        protocolState.state = 1;
+      }
+      return;
+
+    case 1:
+      if (byte === BT_PROTOCOL_SYNC1) {
+        protocolState.state = 2;
+      } else if (byte !== BT_PROTOCOL_SYNC0) {
+        resetProtocolParser();
+      }
+      return;
+
+    case 2:
+      protocolState.type = byte;
+      protocolState.state = 3;
+      return;
+
+    case 3:
+      if (byte > BT_PROTOCOL_MAX_PAYLOAD) {
+        resetProtocolParser();
+        return;
+      }
+
+      protocolState.length = byte;
+      protocolState.index = 0;
+      protocolState.state = byte === 0 ? 5 : 4;
+      return;
+
+    case 4:
+      protocolState.payload[protocolState.index++] = byte;
+      if (protocolState.index >= protocolState.length) {
+        protocolState.state = 5;
+      }
+      return;
+
+    case 5: {
+      let checksum = protocolState.type ^ protocolState.length;
+
+      for (let i = 0; i < protocolState.length; i += 1) {
+        checksum ^= protocolState.payload[i];
+      }
+
+      if ((checksum & 0xFF) === byte) {
+        handleProtocolFrame(protocolState.type, protocolState.payload.subarray(0, protocolState.length));
+      }
+
+      resetProtocolParser();
+      return;
+    }
+
+    default:
+      resetProtocolParser();
+  }
 }
 
 function getPeripheralName(peripheral) {
@@ -175,6 +336,7 @@ function statusPayload() {
     autoReconnect: bleState.shouldAutoReconnect,
     deviceName: bleState.lastSeenName,
     deviceId: bleState.lastSeenId,
+    moduleUartBaudRate: currentBt05ModuleBaudRate,
     notifyUuid: bleState.notifyCharacteristic ? normalizeUuid(bleState.notifyCharacteristic.uuid) : '',
     writeUuid: bleState.writeCharacteristic ? normalizeUuid(bleState.writeCharacteristic.uuid) : '',
   };
@@ -212,6 +374,8 @@ function cleanupConnectionState() {
   if (transferState.active) {
     transferState.stopRequested = true;
   }
+
+  failBt05BaudRequest(new Error('BT05 connection closed before the baud configuration request completed.'));
 
   bleState.peripheral = null;
   bleState.notifyCharacteristic = null;
@@ -320,6 +484,10 @@ async function subscribeToNotifications(characteristic) {
 
   characteristic.on('data', (buffer) => {
     logTransport('rx', buffer, 'BT05 notification');
+
+    for (const byte of buffer) {
+      processProtocolByte(byte);
+    }
   });
 
   await characteristic.subscribeAsync();
@@ -541,6 +709,40 @@ async function writeBytes(byteArray, label, options = {}) {
   }
 }
 
+async function configureModuleBaud(baudRate) {
+  if (!bleState.connected || !bleState.writeCharacteristic) {
+    throw new Error('No BT05 device is connected.');
+  }
+
+  if (pendingBt05BaudRequest) {
+    throw new Error('A BT05 baud request is already pending.');
+  }
+
+  const payload = Buffer.alloc(4);
+  payload.writeUInt32LE(baudRate, 0);
+  const frame = buildProtocolFrame(BT_PROTO_CMD_SET_BT05_BAUD, payload);
+
+  const responsePromise = new Promise((resolve, reject) => {
+    pendingBt05BaudRequest = {
+      timeoutId: setTimeout(() => {
+        pendingBt05BaudRequest = null;
+        reject(new Error('Timed out waiting for the STM32 BT05 baud response.'));
+      }, BT05_BAUD_RESULT_TIMEOUT_MS),
+      resolve,
+      reject,
+    };
+  });
+
+  try {
+    await writeBytes(Array.from(frame), 'BT05 baud config', { repeatCount: 1 });
+  } catch (error) {
+    failBt05BaudRequest(error);
+    throw error;
+  }
+
+  return responsePromise;
+}
+
 function sanitizeRepeatCount(options) {
   const repeatCount = options?.repeatCount;
 
@@ -618,6 +820,15 @@ function registerIpc() {
       repeatCount: sanitizeRepeatCount(options),
       sendEmptyAudioPacketAtEnd: options?.sendEmptyAudioPacketAtEnd === true,
     });
+  });
+
+  ipcMain.handle('ble:configure-module-baud', async (_event, baudRate) => {
+    const requestedBaud = Number(baudRate);
+    if (!Number.isInteger(requestedBaud) || requestedBaud <= 0) {
+      throw new Error(`Invalid baud rate: ${baudRate}`);
+    }
+
+    return configureModuleBaud(requestedBaud);
   });
 
   ipcMain.handle('ble:stop-transfer', async () => {
