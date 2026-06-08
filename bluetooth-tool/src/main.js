@@ -497,7 +497,17 @@ async function subscribeToNotifications(characteristic) {
   }
 
   characteristic.on('data', (buffer) => {
-    logTransport('rx', buffer, 'BT05 notification');
+    let label = 'BT05 notification';
+    
+    // Quick heuristic to translate the touch state hex bytes inline in the log
+    if (buffer.length >= 10 && buffer[0] === BT_PROTOCOL_SYNC0 && buffer[1] === BT_PROTOCOL_SYNC1 && buffer[2] === BT_PROTO_EVT_TOUCH_STATE) {
+      const active = buffer[4] !== 0;
+      const delta = readU16LE(buffer, 5);
+      const raw = readU16LE(buffer, 7);
+      label = `[Touch State] active=${active}, delta=${delta}, raw=${raw}`;
+    }
+
+    logTransport('rx', buffer, label);
 
     for (const byte of buffer) {
       processProtocolByte(byte);

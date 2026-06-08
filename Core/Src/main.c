@@ -90,9 +90,9 @@ typedef enum {
 
 #define TOUCH_SAMPLE_INTERVAL_MS  5U
 #define TOUCH_BASELINE_SAMPLES    8U
-#define TOUCH_THRESHOLD_MIN       2U
-#define TOUCH_THRESHOLD_DIVISOR   50U
-#define TOUCH_AMBIENT_THRESHOLD_MIN      14U
+#define TOUCH_THRESHOLD_MIN       7U
+#define TOUCH_THRESHOLD_DIVISOR   122U
+#define TOUCH_AMBIENT_THRESHOLD_MIN      2U
 #define TOUCH_AMBIENT_THRESHOLD_DIVISOR  2U
 
 #define BT_PROTO_SYNC0                  0xA5U
@@ -615,7 +615,7 @@ static void Touch_InitBaseline(void) {
   uint32_t sample = 0;
   uint32_t sample_count = 0;
 
-  HAL_Delay(20);
+  HAL_Delay(2000);
 
   for (uint32_t i = 0; i < TOUCH_BASELINE_SAMPLES; i++) {
     if (Touch_ReadRaw(&sample)) {
@@ -673,15 +673,25 @@ static void Touch_Process(void) {
   }
   dbg_touch.delta = delta;
 
+#define TOUCH_DEBUG_STREAM_EN 0
+
   if (touch_active) {
     touched = (delta >= ambient_threshold);
   } else {
     touched = (delta >= threshold);
   }
 
+#if TOUCH_DEBUG_STREAM_EN
+  static uint32_t last_bt_send_ms = 0;
+  if ((touched != touch_active) || ((HAL_GetTick() - last_bt_send_ms) >= 100U)) {
+    BT_ProtocolSendTouchState(touched);
+    last_bt_send_ms = HAL_GetTick();
+  }
+#else
   if (touched != touch_active) {
     BT_ProtocolSendTouchState(touched);
   }
+#endif
 
   if (touched && !touch_active) {
     uint8_t touch_byte = 0x31;
