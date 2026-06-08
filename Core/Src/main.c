@@ -76,6 +76,13 @@ typedef struct {
   const char *at_command;
 } BT05_BaudSetting_t;
 
+typedef enum {
+  FACE_HAPPY       = 0,
+  FACE_DISTRACTED  = 1,
+  FACE_DISTURBED   = 2,
+  FACE_CRISIS      = 3,
+} FaceState_t;
+
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -83,9 +90,9 @@ typedef struct {
 
 #define TOUCH_SAMPLE_INTERVAL_MS  5U
 #define TOUCH_BASELINE_SAMPLES    8U
-#define TOUCH_THRESHOLD_MIN       14U
+#define TOUCH_THRESHOLD_MIN       2U
 #define TOUCH_THRESHOLD_DIVISOR   50U
-#define TOUCH_AMBIENT_THRESHOLD_MIN      20U
+#define TOUCH_AMBIENT_THRESHOLD_MIN      14U
 #define TOUCH_AMBIENT_THRESHOLD_DIVISOR  2U
 
 #define BT_PROTO_SYNC0                  0xA5U
@@ -120,13 +127,15 @@ typedef struct {
 /* USER CODE BEGIN PV */
 
 static bool face_state_known = false;
-static bool face_is_happy = false;
+static FaceState_t face_state = FACE_HAPPY;
 static bool touch_baseline_valid = false;
 static bool touch_active = false;
 static bool fake_audio_enabled = true;
 static uint32_t touch_baseline = 0;
 static uint32_t touch_last_sample_ms = 0;
 static BT_ProtocolParser_t bt_protocol_parser = {0};
+static uint32_t blink_last_ms = 0;
+static bool blink_is_closed = false;
 
 volatile TouchDebug_t dbg_touch = {
   .raw = 0,
@@ -148,9 +157,9 @@ volatile TouchDebug_t dbg_touch = {
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 /* USER CODE BEGIN PFP */
-static void DrawFace(bool happy);
-static void DrawCuteEye(int16_t center_x, int16_t center_y, bool sad, bool left_eye);
-static void SetFaceState(bool happy);
+static void DrawFace(FaceState_t state);
+static void DrawCuteEye(int16_t center_x, int16_t center_y, FaceState_t state, bool left_eye);
+static void SetFaceState(FaceState_t state);
 static bool Touch_ReadRaw(uint32_t *value);
 static void Touch_InitBaseline(void);
 static void Touch_Process(void);
@@ -158,7 +167,7 @@ static void BT_ProtocolResetParser(void);
 static bool BT_ProtocolProcessByte(uint8_t byte);
 static void BT_ProtocolHandleFrame(uint8_t type, const uint8_t *payload, uint8_t length);
 static void BT_ProtocolSendFrame(uint8_t type, const uint8_t *payload, uint8_t length);
-static void BT_ProtocolSendFaceState(bool happy);
+static void BT_ProtocolSendFaceState(FaceState_t state);
 static void BT_ProtocolSendTouchState(bool active);
 static void BT_ProtocolSendStatus(void);
 static void BT_ProtocolSendPong(void);
@@ -172,43 +181,80 @@ static uint8_t BT05_ConfigureBaud(uint32_t baud_rate);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
-static void DrawCuteEye(int16_t center_x, int16_t center_y, bool sad, bool left_eye) {
+static void DrawCuteEye(int16_t center_x, int16_t center_y, FaceState_t state, bool left_eye) {
   const int16_t eye_scale = 3;
   const int16_t eye_radius = 6 * eye_scale;
   const int16_t pupil_radius = 2 * eye_scale;
   const int16_t highlight_radius = eye_scale - 1;
-  int16_t pupil_x = center_x + eye_scale;
-  int16_t pupil_y = center_y + eye_scale;
+  int16_t pupil_x, pupil_y;
 
   SH1106_DrawFilledCircle(center_x, center_y, eye_radius, SH1106_COLOR_WHITE);
 
-  if (sad) {
-    pupil_x = left_eye ? (center_x - eye_scale) : (center_x + eye_scale);
-    pupil_y = center_y + (2 * eye_scale);
+  switch (state) {
+    case FACE_HAPPY:
+    default:
+      /* Symmetric trim at top, pupils up-right */
+      pupil_x = center_x + eye_scale;
+      pupil_y = center_y + eye_scale;
+      SH1106_DrawLine(center_x - (5 * eye_scale), center_y - (8 * eye_scale),
+                      center_x - eye_scale,        center_y - (6 * eye_scale), SH1106_COLOR_WHITE);
+      SH1106_DrawLine(center_x + eye_scale,        center_y - (6 * eye_scale),
+                      center_x + (5 * eye_scale),  center_y - (8 * eye_scale), SH1106_COLOR_WHITE);
+      break;
 
-    if (left_eye) {
-      SH1106_DrawLine(center_x - (6 * eye_scale), center_y - (4 * eye_scale), center_x + (6 * eye_scale), center_y - eye_scale, SH1106_COLOR_BLACK);
-      SH1106_DrawLine(center_x - (6 * eye_scale), center_y - (3 * eye_scale), center_x + (6 * eye_scale), center_y, SH1106_COLOR_BLACK);
-      SH1106_DrawLine(center_x - (5 * eye_scale), center_y - (9 * eye_scale), center_x + (4 * eye_scale), center_y - (7 * eye_scale), SH1106_COLOR_WHITE);
-    } else {
-      SH1106_DrawLine(center_x - (6 * eye_scale), center_y - eye_scale, center_x + (6 * eye_scale), center_y - (4 * eye_scale), SH1106_COLOR_BLACK);
-      SH1106_DrawLine(center_x - (6 * eye_scale), center_y, center_x + (6 * eye_scale), center_y - (3 * eye_scale), SH1106_COLOR_BLACK);
-      SH1106_DrawLine(center_x - (4 * eye_scale), center_y - (7 * eye_scale), center_x + (5 * eye_scale), center_y - (9 * eye_scale), SH1106_COLOR_WHITE);
-    }
-  } else {
-    SH1106_DrawLine(center_x - (5 * eye_scale), center_y - (8 * eye_scale), center_x - eye_scale, center_y - (6 * eye_scale), SH1106_COLOR_WHITE);
-    SH1106_DrawLine(center_x + eye_scale, center_y - (6 * eye_scale), center_x + (5 * eye_scale), center_y - (8 * eye_scale), SH1106_COLOR_WHITE);
+    case FACE_DISTRACTED:
+      /* Both pupils drift right (zoning out), left brow raised higher */
+      pupil_x = center_x + (2 * eye_scale);
+      pupil_y = center_y;
+      if (left_eye) {
+        SH1106_DrawLine(center_x - (5 * eye_scale), center_y - (9 * eye_scale),
+                        center_x + (3 * eye_scale), center_y - (7 * eye_scale), SH1106_COLOR_WHITE);
+      } else {
+        SH1106_DrawLine(center_x - (5 * eye_scale), center_y - (8 * eye_scale),
+                        center_x - eye_scale,        center_y - (6 * eye_scale), SH1106_COLOR_WHITE);
+        SH1106_DrawLine(center_x + eye_scale,        center_y - (6 * eye_scale),
+                        center_x + (5 * eye_scale),  center_y - (8 * eye_scale), SH1106_COLOR_WHITE);
+      }
+      break;
+
+    case FACE_DISTURBED:
+      /* Brows angled inward (furrowed), pupils downcast toward center */
+      pupil_x = left_eye ? (center_x - eye_scale) : (center_x + eye_scale);
+      pupil_y = center_y + (2 * eye_scale);
+      if (left_eye) {
+        SH1106_DrawLine(center_x - (6 * eye_scale), center_y - (4 * eye_scale),
+                        center_x + (6 * eye_scale), center_y - eye_scale,    SH1106_COLOR_BLACK);
+        SH1106_DrawLine(center_x - (6 * eye_scale), center_y - (3 * eye_scale),
+                        center_x + (6 * eye_scale), center_y,                SH1106_COLOR_BLACK);
+        SH1106_DrawLine(center_x - (5 * eye_scale), center_y - (9 * eye_scale),
+                        center_x + (4 * eye_scale), center_y - (7 * eye_scale), SH1106_COLOR_WHITE);
+      } else {
+        SH1106_DrawLine(center_x - (6 * eye_scale), center_y - eye_scale,
+                        center_x + (6 * eye_scale), center_y - (4 * eye_scale), SH1106_COLOR_BLACK);
+        SH1106_DrawLine(center_x - (6 * eye_scale), center_y,
+                        center_x + (6 * eye_scale), center_y - (3 * eye_scale), SH1106_COLOR_BLACK);
+        SH1106_DrawLine(center_x - (4 * eye_scale), center_y - (7 * eye_scale),
+                        center_x + (5 * eye_scale), center_y - (9 * eye_scale), SH1106_COLOR_WHITE);
+      }
+      break;
+
+    case FACE_CRISIS:
+      /* Wide-open eyes (no eyelid trim), pupils small and centered — shocked look */
+      pupil_x = center_x;
+      pupil_y = center_y;
+      break;
   }
 
   SH1106_DrawFilledCircle(pupil_x, pupil_y, pupil_radius, SH1106_COLOR_BLACK);
   SH1106_DrawFilledCircle(pupil_x - eye_scale, pupil_y - eye_scale, highlight_radius, SH1106_COLOR_WHITE);
 }
 
-static void DrawFace(bool happy) {
+static void DrawFace(FaceState_t state) {
   SH1106_Fill(SH1106_COLOR_BLACK);
 
-  DrawCuteEye(42, happy ? 30 : 33, !happy, true);
-  DrawCuteEye(86, happy ? 30 : 33, !happy, false);
+  int16_t eye_y = (state == FACE_DISTURBED) ? 33 : 30;
+  DrawCuteEye(42, eye_y, state, true);
+  DrawCuteEye(86, eye_y, state, false);
 
   SH1106_UpdateScreen();
 }
@@ -367,10 +413,10 @@ static void BT_ProtocolSendFrame(uint8_t type, const uint8_t *payload, uint8_t l
   AT09_SendBytes(frame, (uint16_t)(5U + length));
 }
 
-static void BT_ProtocolSendFaceState(bool happy) {
+static void BT_ProtocolSendFaceState(FaceState_t state) {
   uint8_t payload[1];
 
-  payload[0] = happy ? 1U : 0U;
+  payload[0] = (uint8_t)state;
   BT_ProtocolSendFrame(BT_PROTO_EVT_FACE_STATE, payload, sizeof(payload));
 }
 
@@ -386,9 +432,9 @@ static void BT_ProtocolSendTouchState(bool active) {
 static void BT_ProtocolSendStatus(void) {
   uint8_t payload[11];
 
-  payload[0] = (uint8_t)((face_is_happy ? 0x01U : 0x00U) |
-                         (touch_active ? 0x02U : 0x00U) |
-                         (touch_baseline_valid ? 0x04U : 0x00U));
+  payload[0] = (uint8_t)(((uint8_t)face_state & 0x03U) |
+                         (touch_active ? 0x04U : 0x00U) |
+                         (touch_baseline_valid ? 0x08U : 0x00U));
   BT_ProtocolWriteU16LE(&payload[1], BT_ProtocolClampU16(dbg_touch.raw));
   BT_ProtocolWriteU16LE(&payload[3], BT_ProtocolClampU16(dbg_touch.baseline));
   BT_ProtocolWriteU16LE(&payload[5], BT_ProtocolClampU16(dbg_touch.delta));
@@ -415,8 +461,11 @@ static void BT_ProtocolSendBt05BaudResult(uint8_t status, uint32_t baud_rate) {
 static void BT_ProtocolHandleFrame(uint8_t type, const uint8_t *payload, uint8_t length) {
   switch (type) {
     case BT_PROTO_CMD_SET_FACE:
-      if (length >= 1U) {
-        SetFaceState(payload[0] != 0U);
+      if (length >= 1U && payload[0] <= 3U) {
+        static const FaceState_t face_map[4] = {
+          FACE_CRISIS, FACE_DISTRACTED, FACE_HAPPY, FACE_DISTURBED
+        };
+        SetFaceState(face_map[payload[0]]);
       }
       break;
 
@@ -500,21 +549,51 @@ static bool BT_ProtocolProcessByte(uint8_t byte) {
   }
 }
 
-static void SetFaceState(bool happy) {
-  if (face_state_known && face_is_happy == happy) {
+static void DrawBlinkEyes(void) {
+  SH1106_Fill(SH1106_COLOR_BLACK);
+  SH1106_DrawFilledRectangle(42 - 15, 30 - 2, 30, 5, SH1106_COLOR_WHITE);
+  SH1106_DrawFilledRectangle(86 - 15, 30 - 2, 30, 5, SH1106_COLOR_WHITE);
+  SH1106_UpdateScreen();
+}
+
+static void Blink_Process(void) {
+  if (face_state != FACE_CRISIS) return;
+
+  uint32_t now = HAL_GetTick();
+
+  if (!blink_is_closed) {
+    if (now - blink_last_ms >= 3500U) {
+      blink_is_closed = true;
+      blink_last_ms = now;
+      DrawBlinkEyes();
+    }
+  } else {
+    if (now - blink_last_ms >= 400U) {
+      blink_is_closed = false;
+      blink_last_ms = now;
+      DrawFace(FACE_CRISIS);
+    }
+  }
+}
+
+static void SetFaceState(FaceState_t state) {
+  if (face_state_known && face_state == state) {
     return;
   }
 
-  face_is_happy = happy;
+  blink_is_closed = false;
+  blink_last_ms = HAL_GetTick();
+
+  face_state = state;
   face_state_known = true;
-  DrawFace(happy);
+  DrawFace(state);
 
   {
-    uint8_t negated_state = happy ? '0' : '1';
-    AT09_SendBytes(&negated_state, 1);
+    uint8_t echo = (uint8_t)('0' + (uint8_t)state);
+    AT09_SendBytes(&echo, 1);
   }
 
-  BT_ProtocolSendFaceState(happy);
+  BT_ProtocolSendFaceState(state);
 }
 
 static bool Touch_ReadRaw(uint32_t *value) {
@@ -682,7 +761,7 @@ int main(void)
   Audio_Init();
 
   // Show smiley by default on boot
-  SetFaceState(true);
+  SetFaceState(FACE_CRISIS);
 
   // Pre-fill ring buffer with fake 440 Hz tone, then start DAC playback.
   // Comment out these two lines once real BLE audio packets are arriving.
@@ -725,6 +804,7 @@ int main(void)
     }
 
     Touch_Process();
+    Blink_Process();
 
     /* ---- Legacy single-byte commands ---- */
     if (AT09_DataAvailable()) {
@@ -735,11 +815,10 @@ int main(void)
           continue;
         }
 
-        if (buf[i] == '1') {
-          SetFaceState(true);
-        } else if (buf[i] == '0') {
-          SetFaceState(false);
-        }
+        if      (buf[i] == '0') { SetFaceState(FACE_CRISIS); }
+        else if (buf[i] == '1') { SetFaceState(FACE_DISTRACTED); }
+        else if (buf[i] == '2') { SetFaceState(FACE_HAPPY); }
+        else if (buf[i] == '3') { SetFaceState(FACE_DISTURBED); }
       }
     }
     /* USER CODE END WHILE */
