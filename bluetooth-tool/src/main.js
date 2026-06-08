@@ -18,6 +18,7 @@ const BT_PROTOCOL_SYNC0 = 0xA5;
 const BT_PROTOCOL_SYNC1 = 0x5A;
 const BT_PROTOCOL_MAX_PAYLOAD = 16;
 const BT_PROTO_CMD_SET_BT05_BAUD = 0x04;
+const BT_PROTO_EVT_TOUCH_STATE = 0x81;
 const BT_PROTO_EVT_BT05_BAUD_RESULT = 0x85;
 const BT05_BAUD_RESULT_TIMEOUT_MS = 5000;
 const BT05_BAUD_STATUS_MESSAGES = {
@@ -195,6 +196,10 @@ function readU32LE(buffer, offset = 0) {
   ) >>> 0;
 }
 
+function readU16LE(buffer, offset = 0) {
+  return (buffer[offset] | (buffer[offset + 1] << 8)) >>> 0;
+}
+
 function finalizeBt05BaudRequest(result) {
   if (!pendingBt05BaudRequest) {
     return;
@@ -216,6 +221,15 @@ function failBt05BaudRequest(error) {
 }
 
 function handleProtocolFrame(type, payload) {
+  if (type === BT_PROTO_EVT_TOUCH_STATE && payload.length >= 5) {
+    const active = payload[0] !== 0;
+    const delta = readU16LE(payload, 1);
+    const raw = readU16LE(payload, 3);
+    logSystem('system', `[Touch State] active=${active}, delta=${delta}, raw=${raw}`);
+    publish('ble:touch', { active, delta, raw });
+    return;
+  }
+
   if (type !== BT_PROTO_EVT_BT05_BAUD_RESULT || payload.length < 5) {
     return;
   }
